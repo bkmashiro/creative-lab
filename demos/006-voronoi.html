@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>006 — Interactive Voronoi · creative-lab</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      background: #04060c;
+      color: #e6edf3;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+    canvas.dragging { cursor: grabbing; }
+    .overlay {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      min-width: 270px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(6, 8, 14, 0.72);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
+      z-index: 2;
+    }
+    .overlay h1 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .overlay p,
+    .overlay .meta {
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(230, 237, 243, 0.78);
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 16px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      margin: 10px 0 8px;
+    }
+    .meta strong { color: #7dd3fc; font-weight: 500; }
+    .footer {
+      position: fixed;
+      bottom: 12px;
+      right: 16px;
+      font-family: monospace;
+      font-size: 11px;
+      color: rgba(255,255,255,0.38);
+      z-index: 2;
+    }
+    .footer a { color: inherit; text-decoration: none; }
+    .footer a:hover { color: rgba(255,255,255,0.72); }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div class="overlay">
+  <h1>Interactive Voronoi</h1>
+  <p>Click to add seeds, drag to move them. Press <strong>T</strong> for Delaunay, <strong>A</strong> to animate, <strong>R</strong> to randomize.</p>
+  <div class="meta">
+    <span>Points</span><strong id="countLabel">12</strong>
+    <span>Overlay</span><strong id="overlayLabel">Off</strong>
+    <span>Animate</span><strong id="animateLabel">Off</strong>
+  </div>
+  <p>Smooth half-plane clipping Voronoi with a lightweight brute-force Delaunay overlay.</p>
+</div>
+
+<div class="footer">
+  <a href="https://github.com/bkmashiro/creative-lab">bkmashiro/creative-lab</a>
+  · <a href="https://cl.yuzhes.com">cl.yuzhes.com</a>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const countLabel = document.getElementById('countLabel');
+const overlayLabel = document.getElementById('overlayLabel');
+const animateLabel = document.getElementById('animateLabel');
+
+let width = 0;
+let height = 0;
+let points = [];
+let showTriangulation = false;
+let animate = false;
+let draggingIndex = -1;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function randomPoint() {
+  const hue = Math.random() * 360;
+  return {
+    x: 60 + Math.random() * (width - 120),
+    y: 60 + Math.random() * (height - 120),
+    vx: (Math.random() - 0.5) * 0.55,
+    vy: (Math.random() - 0.5) * 0.55,
+    hue,
+  };
+}
+
+function resetPoints(count = 12) {
+  points = Array.from({ length: count }, () => randomPoint());
+  updateMeta();
+}
+
+function updateMeta() {
+  countLabel.textContent = String(points.length);
+  overlayLabel.textContent = showTriangulation ? 'On' : 'Off';
+  animateLabel.textContent = animate ? 'On' : 'Off';
+}
+
+function halfPlaneClip(poly, a, b) {
+  const nx = b.x - a.x;
+  const ny = b.y - a.y;
+  const c = (b.x * b.x + b.y * b.y - a.x * a.x - a.y * a.y) * 0.5;
+  const inside = p => nx * p.x + ny * p.y <= c + 1e-6;
+  const result = [];
+
+  for (let i = 0; i < poly.length; i++) {
+    const current = poly[i];
+    const prev = poly[(i + poly.length - 1) % poly.length];
+    const currentInside = inside(current);
+    const prevInside = inside(prev);
+
+    if (currentInside !== prevInside) {
+      const dx = current.x - prev.x;
+      const dy = current.y - prev.y;
+      const denom = nx * dx + ny * dy;
+      if (Math.abs(denom) > 1e-8) {
+        const t = (c - nx * prev.x - ny * prev.y) / denom;
+        result.push({ x: prev.x + dx * t, y: prev.y + dy * t });
+      }
+    }
+
+    if (currentInside) result.push(current);
+  }
+
+  return result;
+}
+
+function computeCell(index) {
+  let poly = [
+    { x: 0, y: 0 },
+    { x: width, y: 0 },
+    { x: width, y: height },
+    { x: 0, y: height },
+  ];
+  const site = points[index];
+
+  for (let i = 0; i < points.length; i++) {
+    if (i === index) continue;
+    poly = halfPlaneClip(poly, site, points[i]);
+    if (!poly.length) break;
+  }
+
+  return poly;
+}
+
+function circumcircle(a, b, c) {
+  const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+  if (Math.abs(d) < 1e-6) return null;
+  const ax2ay2 = a.x * a.x + a.y * a.y;
+  const bx2by2 = b.x * b.x + b.y * b.y;
+  const cx2cy2 = c.x * c.x + c.y * c.y;
+  const ux = (ax2ay2 * (b.y - c.y) + bx2by2 * (c.y - a.y) + cx2cy2 * (a.y - b.y)) / d;
+  const uy = (ax2ay2 * (c.x - b.x) + bx2by2 * (a.x - c.x) + cx2cy2 * (b.x - a.x)) / d;
+  const r2 = (ux - a.x) * (ux - a.x) + (uy - a.y) * (uy - a.y);
+  return { x: ux, y: uy, r2 };
+}
+
+function computeDelaunayEdges() {
+  const edges = new Set();
+
+  for (let i = 0; i < points.length - 2; i++) {
+    for (let j = i + 1; j < points.length - 1; j++) {
+      for (let k = j + 1; k < points.length; k++) {
+        const area = (points[j].x - points[i].x) * (points[k].y - points[i].y) - (points[j].y - points[i].y) * (points[k].x - points[i].x);
+        if (Math.abs(area) < 0.01) continue;
+        const circle = circumcircle(points[i], points[j], points[k]);
+        if (!circle) continue;
+        let valid = true;
+        for (let m = 0; m < points.length; m++) {
+          if (m === i || m === j || m === k) continue;
+          const dx = points[m].x - circle.x;
+          const dy = points[m].y - circle.y;
+          if (dx * dx + dy * dy < circle.r2 - 0.1) {
+            valid = false;
+            break;
+          }
+        }
+        if (valid) {
+          [[i, j], [j, k], [i, k]].forEach(([a, b]) => {
+            edges.add(a < b ? `${a}-${b}` : `${b}-${a}`);
+          });
+        }
+      }
+    }
+  }
+
+  return [...edges].map(key => key.split('-').map(Number));
+}
+
+function drawCell(poly, site) {
+  if (poly.length < 3) return;
+  const gradient = ctx.createRadialGradient(site.x, site.y, 12, site.x, site.y, Math.max(width, height) * 0.35);
+  gradient.addColorStop(0, `hsla(${site.hue}, 92%, 68%, 0.92)`);
+  gradient.addColorStop(0.55, `hsla(${site.hue + 18}, 84%, 48%, 0.76)`);
+  gradient.addColorStop(1, `hsla(${site.hue + 32}, 78%, 22%, 0.9)`);
+  ctx.beginPath();
+  ctx.moveTo(poly[0].x, poly[0].y);
+  for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, width, height);
+  const bg = ctx.createLinearGradient(0, 0, 0, height);
+  bg.addColorStop(0, '#0a1020');
+  bg.addColorStop(1, '#03050a');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+
+  if (animate) {
+    for (let i = 0; i < points.length; i++) {
+      if (i === draggingIndex) continue;
+      const point = points[i];
+      point.x += point.vx;
+      point.y += point.vy;
+      if (point.x < 12 || point.x > width - 12) point.vx *= -1;
+      if (point.y < 12 || point.y > height - 12) point.vy *= -1;
+      point.x = Math.max(12, Math.min(width - 12, point.x));
+      point.y = Math.max(12, Math.min(height - 12, point.y));
+    }
+  }
+
+  for (let i = 0; i < points.length; i++) drawCell(computeCell(i), points[i]);
+
+  if (showTriangulation) {
+    const edges = computeDelaunayEdges();
+    ctx.strokeStyle = 'rgba(180, 230, 255, 0.45)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    edges.forEach(([a, b]) => {
+      ctx.moveTo(points[a].x, points[a].y);
+      ctx.lineTo(points[b].x, points[b].y);
+    });
+    ctx.stroke();
+  }
+
+  for (const point of points) {
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 9, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
+
+  requestAnimationFrame(draw);
+}
+
+function pointerPosition(event) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
+canvas.addEventListener('pointerdown', event => {
+  const { x, y } = pointerPosition(event);
+  draggingIndex = points.findIndex(point => (point.x - x) ** 2 + (point.y - y) ** 2 < 144);
+  if (draggingIndex === -1) {
+    points.push({
+      x,
+      y,
+      vx: (Math.random() - 0.5) * 0.55,
+      vy: (Math.random() - 0.5) * 0.55,
+      hue: (points.length * 37 + Math.random() * 30) % 360,
+    });
+  }
+  updateMeta();
+  canvas.classList.toggle('dragging', draggingIndex !== -1);
+});
+
+window.addEventListener('pointermove', event => {
+  if (draggingIndex === -1) return;
+  const { x, y } = pointerPosition(event);
+  points[draggingIndex].x = Math.max(0, Math.min(width, x));
+  points[draggingIndex].y = Math.max(0, Math.min(height, y));
+});
+
+window.addEventListener('pointerup', () => {
+  draggingIndex = -1;
+  canvas.classList.remove('dragging');
+});
+
+window.addEventListener('keydown', event => {
+  const key = event.key.toLowerCase();
+  if (key === 't') {
+    showTriangulation = !showTriangulation;
+    updateMeta();
+  } else if (key === 'a') {
+    animate = !animate;
+    updateMeta();
+  } else if (key === 'r') {
+    resetPoints(12);
+  }
+});
+
+window.addEventListener('resize', () => {
+  resize();
+  updateMeta();
+});
+
+resize();
+resetPoints(12);
+draw();
+</script>
+</body>
+</html>

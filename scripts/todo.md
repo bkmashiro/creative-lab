@@ -4,11 +4,11 @@
 - [x] 001 Particle Gravity Field
 - [x] 002 Fluid Particles
 - [x] 003 SDF Raymarching
+- [x] 004 Fractal Explorer (Mandelbrot/Julia set, interactive zoom)
+- [x] 005 Audio Visualizer (Web Audio API, bar + waveform)
+- [x] 006 Voronoi Diagram (animated, click to add points)
 
 ## Queue
-- [ ] 004 Fractal Explorer (Mandelbrot/Julia set, interactive zoom)
-- [ ] 005 Audio Visualizer (Web Audio API, bar + waveform)
-- [ ] 006 Voronoi Diagram (animated, click to add points)
 - [ ] 007 Noise Terrain (Perlin noise heightmap, isometric view)
 - [ ] 008 L-System Tree (parametric branching, sliders)
 - [ ] 009 Matrix Rain (katakana/ascii variant)

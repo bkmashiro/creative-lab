@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>005 — Audio Visualizer · creative-lab</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      background: #03050a;
+      color: #e6edf3;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+    .panel {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      padding: 14px 16px;
+      min-width: 270px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(6, 8, 14, 0.72);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
+      z-index: 2;
+    }
+    .panel h1 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .panel p,
+    .panel .meta {
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(230, 237, 243, 0.78);
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin: 12px 0 8px;
+    }
+    button {
+      border: 1px solid rgba(88,166,255,0.4);
+      background: rgba(88,166,255,0.14);
+      color: #9fd2ff;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font: inherit;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    button:hover { background: rgba(88,166,255,0.22); border-color: rgba(88,166,255,0.75); }
+    .meta {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 16px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .meta strong { color: #7dd3fc; font-weight: 500; }
+    .footer {
+      position: fixed;
+      bottom: 12px;
+      right: 16px;
+      font-family: monospace;
+      font-size: 11px;
+      color: rgba(255,255,255,0.38);
+      z-index: 2;
+    }
+    .footer a { color: inherit; text-decoration: none; }
+    .footer a:hover { color: rgba(255,255,255,0.72); }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div class="panel">
+  <h1>Audio Visualizer</h1>
+  <p>Start the analyser. If microphone access is denied, a built-in test tone takes over automatically.</p>
+  <div class="controls">
+    <button id="startBtn">Start</button>
+    <span id="status" style="font-size:12px;color:rgba(230,237,243,0.72)">Idle</span>
+  </div>
+  <div class="meta">
+    <span>Source</span><strong id="sourceLabel">None</strong>
+    <span>BPM</span><strong id="bpmLabel">--</strong>
+  </div>
+</div>
+
+<div class="footer">
+  <a href="https://github.com/bkmashiro/creative-lab">bkmashiro/creative-lab</a>
+  · <a href="https://cl.yuzhes.com">cl.yuzhes.com</a>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const startBtn = document.getElementById('startBtn');
+const statusEl = document.getElementById('status');
+const sourceLabel = document.getElementById('sourceLabel');
+const bpmLabel = document.getElementById('bpmLabel');
+
+let audioContext;
+let analyser;
+let frequencyData;
+let waveformData;
+let sourceNode;
+let animationFrame = 0;
+let beatPulse = 0;
+let beatHistory = [];
+let bassAverage = 0;
+let lastBeatTime = 0;
+let bpm = 0;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.floor(window.innerWidth * dpr);
+  canvas.height = Math.floor(window.innerHeight * dpr);
+  canvas.style.width = `${window.innerWidth}px`;
+  canvas.style.height = `${window.innerHeight}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function ensureAnalyser() {
+  analyser = audioContext.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.82;
+  frequencyData = new Uint8Array(analyser.frequencyBinCount);
+  waveformData = new Uint8Array(analyser.fftSize);
+}
+
+async function startVisualizer() {
+  if (!audioContext) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    audioContext = new AudioCtx();
+    ensureAnalyser();
+  }
+
+  await audioContext.resume();
+  statusEl.textContent = 'Requesting microphone…';
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (sourceNode && typeof sourceNode.disconnect === 'function') sourceNode.disconnect();
+    sourceNode = audioContext.createMediaStreamSource(stream);
+    sourceNode.connect(analyser);
+    sourceLabel.textContent = 'Microphone';
+    statusEl.textContent = 'Mic live';
+    startBtn.textContent = 'Resume';
+  } catch (error) {
+    createTestTone();
+    sourceLabel.textContent = 'Test tone';
+    statusEl.textContent = 'Mic denied — test tone active';
+    startBtn.textContent = 'Resume';
+  }
+
+  if (!animationFrame) render();
+}
+
+function createTestTone() {
+  if (sourceNode && typeof sourceNode.disconnect === 'function') sourceNode.disconnect();
+
+  const master = audioContext.createGain();
+  master.gain.value = 0.18;
+
+  const bass = audioContext.createOscillator();
+  bass.type = 'triangle';
+  bass.frequency.value = 55;
+
+  const mid = audioContext.createOscillator();
+  mid.type = 'sawtooth';
+  mid.frequency.value = 220;
+
+  const shimmer = audioContext.createOscillator();
+  shimmer.type = 'sine';
+  shimmer.frequency.value = 880;
+
+  const bassGain = audioContext.createGain();
+  const midGain = audioContext.createGain();
+  const shimmerGain = audioContext.createGain();
+  bassGain.gain.value = 0.0001;
+  midGain.gain.value = 0.04;
+  shimmerGain.gain.value = 0.02;
+
+  bass.connect(bassGain).connect(master);
+  mid.connect(midGain).connect(master);
+  shimmer.connect(shimmerGain).connect(master);
+  master.connect(analyser);
+  analyser.connect(audioContext.destination);
+
+  const bpmTarget = 120;
+  const beatInterval = 60000 / bpmTarget;
+  const triggerBeat = () => {
+    const now = audioContext.currentTime;
+    bassGain.gain.cancelScheduledValues(now);
+    bassGain.gain.setValueAtTime(0.0001, now);
+    bassGain.gain.linearRampToValueAtTime(0.35, now + 0.01);
+    bassGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+    midGain.gain.cancelScheduledValues(now);
+    midGain.gain.setValueAtTime(0.04, now);
+    midGain.gain.linearRampToValueAtTime(0.09, now + 0.02);
+    midGain.gain.exponentialRampToValueAtTime(0.03, now + 0.16);
+  };
+
+  bass.start();
+  mid.start();
+  shimmer.start();
+  triggerBeat();
+  setInterval(triggerBeat, beatInterval);
+  sourceNode = master;
+}
+
+function registerBeat(nowMs) {
+  if (nowMs - lastBeatTime < 280) return;
+  lastBeatTime = nowMs;
+  beatPulse = 1;
+  beatHistory.push(nowMs);
+  if (beatHistory.length > 12) beatHistory.shift();
+  if (beatHistory.length >= 4) {
+    const intervals = [];
+    for (let i = 1; i < beatHistory.length; i++) {
+      const delta = beatHistory[i] - beatHistory[i - 1];
+      if (delta >= 250 && delta <= 1500) intervals.push(delta);
+    }
+    if (intervals.length) {
+      const average = intervals.reduce((sum, value) => sum + value, 0) / intervals.length;
+      let nextBpm = 60000 / average;
+      while (nextBpm < 70) nextBpm *= 2;
+      while (nextBpm > 180) nextBpm *= 0.5;
+      bpm = bpm ? bpm * 0.72 + nextBpm * 0.28 : nextBpm;
+      bpmLabel.textContent = Math.round(bpm).toString();
+    }
+  }
+}
+
+function warmToCool(t, alpha) {
+  const hue = 18 + t * 190;
+  const sat = 92 - t * 18;
+  const light = 58 + Math.sin(t * Math.PI) * 10;
+  return `hsla(${hue}, ${sat}%, ${light}%, ${alpha})`;
+}
+
+function render() {
+  animationFrame = requestAnimationFrame(render);
+  if (!analyser) return;
+
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  analyser.getByteFrequencyData(frequencyData);
+  analyser.getByteTimeDomainData(waveformData);
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, '#08111f');
+  gradient.addColorStop(0.6, '#05070d');
+  gradient.addColorStop(1, '#030509');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  const bassBins = Math.max(6, Math.floor(frequencyData.length * 0.08));
+  let bassEnergy = 0;
+  for (let i = 0; i < bassBins; i++) bassEnergy += frequencyData[i];
+  bassEnergy /= bassBins;
+  bassAverage = bassAverage * 0.9 + bassEnergy * 0.1;
+  if (bassEnergy > bassAverage * 1.33 + 9) registerBeat(performance.now());
+  beatPulse *= 0.92;
+
+  if (beatPulse > 0.01) {
+    const flash = ctx.createRadialGradient(width * 0.5, height * 0.65, 20, width * 0.5, height * 0.65, height * 0.7);
+    flash.addColorStop(0, `rgba(255, 124, 64, ${0.14 * beatPulse})`);
+    flash.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = flash;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  const bars = 84;
+  const barWidth = width / bars;
+  const bottom = height - 48;
+  const usableHeight = height * 0.36;
+
+  for (let i = 0; i < bars; i++) {
+    const start = Math.floor((i / bars) * frequencyData.length);
+    const end = Math.max(start + 1, Math.floor(((i + 1) / bars) * frequencyData.length));
+    let sum = 0;
+    for (let j = start; j < end; j++) sum += frequencyData[j];
+    const energy = sum / (end - start);
+    const normalized = energy / 255;
+    const barHeight = Math.max(3, normalized * usableHeight * (0.35 + i / bars));
+    const x = i * barWidth;
+    const y = bottom - barHeight;
+
+    ctx.fillStyle = warmToCool(i / (bars - 1), 0.75 + normalized * 0.2);
+    ctx.fillRect(x + 1, y, Math.max(2, barWidth - 2), barHeight);
+  }
+
+  ctx.beginPath();
+  ctx.lineWidth = 2;
+  for (let i = 0; i < waveformData.length; i++) {
+    const x = (i / (waveformData.length - 1)) * width;
+    const y = height * 0.48 + ((waveformData[i] - 128) / 128) * height * 0.16;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = 'rgba(180, 230, 255, 0.92)';
+  ctx.shadowColor = 'rgba(100, 180, 255, 0.55)';
+  ctx.shadowBlur = 12 + beatPulse * 16;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = 'rgba(255,255,255,0.82)';
+  ctx.font = '12px SF Mono, monospace';
+  ctx.fillText(`BPM ${bpm ? Math.round(bpm) : '--'}`, width - 96, 28);
+}
+
+window.addEventListener('resize', resize);
+startBtn.addEventListener('click', startVisualizer);
+resize();
+render();
+</script>
+</body>
+</html>
