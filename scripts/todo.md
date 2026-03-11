@@ -12,9 +12,9 @@
 - [x] 007 Noise Terrain (Perlin noise heightmap, isometric view)
 - [x] 008 L-System Tree (parametric branching, sliders)
 - [x] 009 Matrix Rain (katakana/ascii variant)
-- [ ] 010 Physics Bouncing Balls (verlet integration, collision)
-- [ ] 011 CSS 3D Card Flip Gallery
-- [ ] 012 Generative Typography (text as particle field)
+- [x] 010 Physics Bouncing Balls (verlet integration, collision)
+- [x] 011 CSS 3D Card Flip Gallery
+- [x] 012 Generative Typography (text as particle field)
 - [ ] 013 Game of Life Variant (colored, aging cells)
 - [ ] 014 Maze Generator (recursive backtracking, animated)
 - [ ] 015 Water Ripple (mouse interaction, WebGL)

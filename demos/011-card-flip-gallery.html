@@ -1,0 +1,319 @@
+<!-- TITLE: 011 CSS 3D Card Flip Gallery -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>011 — CSS 3D Card Flip Gallery · creative-lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; min-height: 100%; }
+    body {
+      background:
+        radial-gradient(circle at 20% 20%, rgba(34,211,238,0.12), transparent 28%),
+        radial-gradient(circle at 80% 10%, rgba(192,132,252,0.14), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(251,191,36,0.08), transparent 30%),
+        #0a0a0a;
+      color: #e6edf3;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 56px 20px;
+    }
+    .shell {
+      width: min(1100px, 100%);
+    }
+    .header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .copy h1 {
+      font-size: clamp(28px, 6vw, 48px);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      margin-bottom: 10px;
+    }
+    .copy p {
+      max-width: 560px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: rgba(230,237,243,0.7);
+    }
+    .toggle {
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.08);
+      color: #f8fafc;
+      padding: 12px 18px;
+      border-radius: 999px;
+      font-size: 13px;
+      cursor: pointer;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 18px 50px rgba(0,0,0,0.3);
+      transition: transform 0.25s ease, background 0.25s ease, border-color 0.25s ease;
+    }
+    .toggle:hover {
+      transform: translateY(-1px);
+      background: rgba(255,255,255,0.12);
+      border-color: rgba(255,255,255,0.3);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 22px;
+    }
+    .scene {
+      perspective: 1200px;
+      min-height: 250px;
+    }
+    .card {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 250px;
+      transform-style: preserve-3d;
+      transition: transform 0.6s ease;
+    }
+    .scene:hover .card,
+    .scene.is-flipped .card,
+    body.flip-all .card {
+      transform: rotateY(180deg);
+    }
+    .face {
+      position: absolute;
+      inset: 0;
+      border-radius: 26px;
+      overflow: hidden;
+      backface-visibility: hidden;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 22px;
+    }
+    .face::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.18), transparent 50%, rgba(255,255,255,0.06));
+      pointer-events: none;
+    }
+    .front {
+      background: var(--gradient);
+    }
+    .back {
+      transform: rotateY(180deg);
+      background:
+        linear-gradient(155deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03)),
+        rgba(8,12,20,0.82);
+    }
+    .eyebrow,
+    .back small {
+      position: relative;
+      z-index: 1;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      font-size: 11px;
+      color: rgba(255,255,255,0.7);
+    }
+    .icon {
+      position: relative;
+      z-index: 1;
+      font-size: 44px;
+      filter: drop-shadow(0 10px 24px rgba(0,0,0,0.35));
+    }
+    .title,
+    .back h2 {
+      position: relative;
+      z-index: 1;
+      font-size: 24px;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    .back p {
+      position: relative;
+      z-index: 1;
+      font-size: 13px;
+      line-height: 1.65;
+      color: rgba(230,237,243,0.78);
+    }
+    .chip-row {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.14);
+      font-size: 11px;
+      color: rgba(255,255,255,0.88);
+    }
+    .footer {
+      margin-top: 18px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: rgba(255,255,255,0.42);
+      font-family: monospace;
+    }
+    .footer a { color: inherit; text-decoration: none; }
+    .footer a:hover { color: rgba(255,255,255,0.72); }
+    @media (max-width: 860px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px) {
+      body { padding: 28px 14px 40px; }
+      .grid { grid-template-columns: 1fr; }
+      .scene, .card { min-height: 220px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="header">
+      <div class="copy">
+        <h1>Glass Flip Archive</h1>
+        <p>Six glassmorphism cards with individual hover flips and a global reveal toggle. Each front face is a poster fragment; each back face exposes a short fictional capsule.</p>
+      </div>
+      <button class="toggle" id="toggleAll" type="button">Flip all cards</button>
+    </div>
+
+    <div class="grid" id="grid">
+      <div class="scene" style="--gradient:linear-gradient(140deg, rgba(34,211,238,0.5), rgba(15,23,42,0.7), rgba(59,130,246,0.36));">
+        <div class="card">
+          <div class="face front">
+            <span class="eyebrow">Archive 01</span>
+            <span class="icon">🪐</span>
+            <h2 class="title">Orbital Motel</h2>
+            <div class="chip-row"><span class="chip">Low gravity</span><span class="chip">Neon fog</span></div>
+          </div>
+          <div class="face back">
+            <small>Manifest</small>
+            <h2>Orbital Motel</h2>
+            <p>A six-room station parked above the cloud line, where each corridor window frames a different dawn and the vending machine serves meteor tea.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="scene" style="--gradient:linear-gradient(145deg, rgba(251,191,36,0.42), rgba(120,53,15,0.55), rgba(244,114,182,0.36));">
+        <div class="card">
+          <div class="face front">
+            <span class="eyebrow">Archive 02</span>
+            <span class="icon">🎷</span>
+            <h2 class="title">Afterglow Club</h2>
+            <div class="chip-row"><span class="chip">Smoky brass</span><span class="chip">2AM set</span></div>
+          </div>
+          <div class="face back">
+            <small>Manifest</small>
+            <h2>Afterglow Club</h2>
+            <p>Half jazz cellar, half mirage. The walls sweat amber light, the drummer plays to a roomful of mirrors, and the last song always lands at sunrise.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="scene" style="--gradient:linear-gradient(150deg, rgba(167,139,250,0.5), rgba(30,41,59,0.76), rgba(56,189,248,0.28));">
+        <div class="card">
+          <div class="face front">
+            <span class="eyebrow">Archive 03</span>
+            <span class="icon">🧊</span>
+            <h2 class="title">Frost Vault</h2>
+            <div class="chip-row"><span class="chip">Cryo bloom</span><span class="chip">Silent code</span></div>
+          </div>
+          <div class="face back">
+            <small>Manifest</small>
+            <h2>Frost Vault</h2>
+            <p>Deep below the black ice, an archive keeps songs frozen in crystal slabs. You thaw one fragment at a time to hear the ghosts harmonize.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="scene" style="--gradient:linear-gradient(135deg, rgba(74,222,128,0.46), rgba(20,83,45,0.68), rgba(34,197,94,0.2));">
+        <div class="card">
+          <div class="face front">
+            <span class="eyebrow">Archive 04</span>
+            <span class="icon">🌿</span>
+            <h2 class="title">Glass Canopy</h2>
+            <div class="chip-row"><span class="chip">Rain lattice</span><span class="chip">Warm glass</span></div>
+          </div>
+          <div class="face back">
+            <small>Manifest</small>
+            <h2>Glass Canopy</h2>
+            <p>A suspended greenhouse where the trees are trained into geometric loops and every raindrop rings a hidden copper bell on the way down.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="scene" style="--gradient:linear-gradient(140deg, rgba(244,114,182,0.5), rgba(67,56,202,0.66), rgba(15,23,42,0.78));">
+        <div class="card">
+          <div class="face front">
+            <span class="eyebrow">Archive 05</span>
+            <span class="icon">📼</span>
+            <h2 class="title">Retro Signal</h2>
+            <div class="chip-row"><span class="chip">Tape hiss</span><span class="chip">Late cable</span></div>
+          </div>
+          <div class="face back">
+            <small>Manifest</small>
+            <h2>Retro Signal</h2>
+            <p>An after-hours broadcast trapped between channels, equal parts weather report and love letter, flickering across a city that never powers down.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="scene" style="--gradient:linear-gradient(145deg, rgba(248,250,252,0.22), rgba(148,163,184,0.26), rgba(14,116,144,0.48));">
+        <div class="card">
+          <div class="face front">
+            <span class="eyebrow">Archive 06</span>
+            <span class="icon">🌙</span>
+            <h2 class="title">Night Ferry</h2>
+            <div class="chip-row"><span class="chip">Sea static</span><span class="chip">Blue hour</span></div>
+          </div>
+          <div class="face back">
+            <small>Manifest</small>
+            <h2>Night Ferry</h2>
+            <p>A silent vessel crossing black water with only moonlit railings for company. Each ticket promises one forgotten memory returned before docking.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <a href="https://github.com/bkmashiro/creative-lab">bkmashiro/creative-lab</a>
+      <span>hover cards or click the global toggle</span>
+      <a href="https://cl.yuzhes.com">cl.yuzhes.com</a>
+    </div>
+  </div>
+
+  <script>
+    const button = document.getElementById('toggleAll');
+    const scenes = Array.from(document.querySelectorAll('.scene'));
+    let flipAll = false;
+
+    button.addEventListener('click', () => {
+      flipAll = !flipAll;
+      document.body.classList.toggle('flip-all', flipAll);
+      button.textContent = flipAll ? 'Reset all cards' : 'Flip all cards';
+    });
+
+    scenes.forEach(scene => {
+      scene.addEventListener('click', event => {
+        if (event.target === button) return;
+        if (window.matchMedia('(hover: none)').matches && !document.body.classList.contains('flip-all')) {
+          scene.classList.toggle('is-flipped');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
