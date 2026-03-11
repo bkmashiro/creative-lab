@@ -23,13 +23,14 @@ const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
 let W, H;
-function resize() {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
-  initFlowField();
-}
-resize();
-window.addEventListener('resize', resize);
+
+// Flow field constants — declared before resize() call to avoid TDZ
+const CELL = 24;
+let cols, rows, flowField;
+
+// SPH density grid
+const DENSITY_CELL = 40;
+let dcols, drows, densityGrid;
 
 // Mouse interaction
 const mouse = { x: -9999, y: -9999, vx: 0, vy: 0, px: 0, py: 0 };
@@ -42,9 +43,13 @@ window.addEventListener('mousemove', e => {
   mouse.y = e.clientY;
 });
 
-// Flow field (curl noise approximation using Perlin-like field)
-const CELL = 24;
-let cols, rows, flowField;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  initFlowField();
+}
+resize();
+window.addEventListener('resize', resize);
 
 function hash(x, y) {
   // Simple deterministic noise angle
@@ -76,8 +81,6 @@ function getFlow(x, y) {
 }
 
 // SPH-lite: density grid for coloring
-const DENSITY_CELL = 40;
-let dcols, drows, densityGrid;
 
 function updateDensity(particles) {
   dcols = Math.ceil(W / DENSITY_CELL) + 1;
