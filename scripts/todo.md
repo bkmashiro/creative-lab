@@ -9,9 +9,9 @@
 - [x] 006 Voronoi Diagram (animated, click to add points)
 
 ## Queue
-- [ ] 007 Noise Terrain (Perlin noise heightmap, isometric view)
-- [ ] 008 L-System Tree (parametric branching, sliders)
-- [ ] 009 Matrix Rain (katakana/ascii variant)
+- [x] 007 Noise Terrain (Perlin noise heightmap, isometric view)
+- [x] 008 L-System Tree (parametric branching, sliders)
+- [x] 009 Matrix Rain (katakana/ascii variant)
 - [ ] 010 Physics Bouncing Balls (verlet integration, collision)
 - [ ] 011 CSS 3D Card Flip Gallery
 - [ ] 012 Generative Typography (text as particle field)
