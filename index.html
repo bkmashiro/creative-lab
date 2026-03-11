@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>creative-lab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 64px 32px 40px;
+      text-align: center;
+      border-bottom: 1px solid #21262d;
+    }
+
+    header h1 {
+      font-size: 2.8rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #58a6ff 0%, #a5d6ff 50%, #ffffff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+    }
+
+    header p.subtitle {
+      color: #8b949e;
+      font-size: 1rem;
+      margin-bottom: 20px;
+      max-width: 480px;
+      margin-left: auto;
+      margin-right: auto;
+      line-height: 1.6;
+    }
+
+    .header-links {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .header-links a {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .header-links a:hover {
+      border-color: #58a6ff;
+      background: rgba(88, 166, 255, 0.08);
+      color: #58a6ff;
+    }
+
+    main {
+      flex: 1;
+      padding: 48px 32px;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .section-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #8b949e;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #21262d;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, #58a6ff, #bc8cff);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .card:hover {
+      border-color: #58a6ff;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(88, 166, 255, 0.12);
+    }
+
+    .card:hover::before {
+      opacity: 1;
+    }
+
+    .card-num {
+      font-size: 0.72rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: #58a6ff;
+      background: rgba(88, 166, 255, 0.1);
+      padding: 2px 8px;
+      border-radius: 4px;
+      width: fit-content;
+    }
+
+    .card h2 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #e6edf3;
+    }
+
+    .card p {
+      font-size: 0.875rem;
+      color: #8b949e;
+      line-height: 1.5;
+      flex: 1;
+    }
+
+    .card-tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .tag {
+      font-size: 0.7rem;
+      padding: 2px 7px;
+      border-radius: 4px;
+      border: 1px solid #21262d;
+      color: #8b949e;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
+    .card a.open-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 14px;
+      background: rgba(88, 166, 255, 0.12);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      border-radius: 6px;
+      color: #58a6ff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      font-weight: 500;
+      transition: background 0.2s, border-color 0.2s;
+      width: fit-content;
+    }
+
+    .card a.open-link:hover {
+      background: rgba(88, 166, 255, 0.22);
+      border-color: #58a6ff;
+    }
+
+    footer {
+      padding: 32px;
+      text-align: center;
+      border-top: 1px solid #21262d;
+      color: #8b949e;
+      font-size: 0.82rem;
+    }
+
+    footer a {
+      color: #8b949e;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    footer a:hover {
+      color: #58a6ff;
+    }
+
+    footer .dot { margin: 0 8px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>creative-lab</h1>
+  <p class="subtitle">Daily creative coding demos — canvas, WebGL, CSS, generative art.<br>One new demo every 2 days. Each is a single self-contained HTML file.</p>
+  <div class="header-links">
+    <a href="https://github.com/bkmashiro/creative-lab" target="_blank">
+      ★ GitHub
+    </a>
+    <a href="https://yuzhes.com" target="_blank">
+      yuzhes.com
+    </a>
+  </div>
+</header>
+
+<main>
+  <div class="section-label">demos · 3 released</div>
+  <div class="grid">
+
+    <div class="card">
+      <span class="card-num">#001</span>
+      <h2>Particle Gravity Field</h2>
+      <p>200 particles attracted to dynamic gravity wells — mouse cursor + 2 fixed attractors. Trails fade with globalAlpha, color shifts from deep blue to white by speed.</p>
+      <div class="card-tags">
+        <span class="tag">Canvas 2D</span>
+        <span class="tag">Physics</span>
+        <span class="tag">Particles</span>
+      </div>
+      <a class="open-link" href="demos/001-particles.html" target="_blank">Open →</a>
+    </div>
+
+    <div class="card">
+      <span class="card-num">#002</span>
+      <h2>Fluid Particles</h2>
+      <p>500 particles simulating fluid dynamics with simplified SPH. Mouse interaction disturbs the flow. Color gradients from deep blue through cyan to white by velocity.</p>
+      <div class="card-tags">
+        <span class="tag">Canvas 2D</span>
+        <span class="tag">Fluid</span>
+        <span class="tag">SPH</span>
+      </div>
+      <a class="open-link" href="demos/002-fluid.html" target="_blank">Open →</a>
+    </div>
+
+    <div class="card">
+      <span class="card-num">#003</span>
+      <h2>SDF Raymarching</h2>
+      <p>WebGL raymarcher with signed distance functions — rotating sphere and torus union, Phong shading, soft shadows, and smooth animation via time uniform.</p>
+      <div class="card-tags">
+        <span class="tag">WebGL</span>
+        <span class="tag">GLSL</span>
+        <span class="tag">Raymarching</span>
+      </div>
+      <a class="open-link" href="demos/003-raymarching.html" target="_blank">Open →</a>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  <a href="https://github.com/bkmashiro/creative-lab" target="_blank">bkmashiro/creative-lab</a>
+  <span class="dot">·</span>
+  <a href="https://cl.yuzhes.com">cl.yuzhes.com</a>
+  <span class="dot">·</span>
+  MIT License
+</footer>
+
+</body>
+</html>
