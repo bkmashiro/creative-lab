@@ -1,0 +1,373 @@
+<!-- TITLE: 028 Sand Simulation -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>028 — Sand Simulation · creative-lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      background: #03050a;
+      color: #e6edf3;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    canvas { display: block; width: 100%; height: 100%; cursor: crosshair; image-rendering: pixelated; }
+    .panel {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 360px;
+      max-width: calc(100vw - 32px);
+      padding: 14px 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      background: rgba(10, 12, 16, 0.78);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 45px rgba(0,0,0,0.38);
+      z-index: 2;
+    }
+    .panel h1 { font-size: 15px; margin-bottom: 8px; }
+    .panel p, .panel label, .panel span, .panel button, .panel select {
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(230, 237, 243, 0.84);
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 76px 1fr 64px;
+      gap: 8px 10px;
+      align-items: center;
+      margin: 12px 0 10px;
+    }
+    input[type="range"], select { width: 100%; accent-color: #7dd3fc; }
+    select, button {
+      min-height: 32px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      color: #f8fafc;
+      padding: 7px 10px;
+      cursor: pointer;
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 14px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .meta strong { color: #7dd3fc; font-weight: 500; }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div class="panel">
+  <h1>Sand Simulation</h1>
+  <p>Paint falling sand, flowing water, solid stone, or flickering fire into a cellular automaton sandbox. Materials react and settle under gravity in real time.</p>
+  <div class="controls">
+    <label for="material">Material</label>
+    <select id="material">
+      <option value="sand">Sand</option>
+      <option value="water">Water</option>
+      <option value="fire">Fire</option>
+      <option value="stone">Stone</option>
+      <option value="erase">Erase</option>
+    </select>
+    <span id="materialValue">sand</span>
+
+    <label for="brush">Brush</label>
+    <input id="brush" type="range" min="1" max="14" step="1" value="5">
+    <span id="brushValue">5</span>
+
+    <label for="spawn">Spawn</label>
+    <input id="spawn" type="range" min="1" max="8" step="1" value="4">
+    <span id="spawnValue">4</span>
+  </div>
+  <div class="meta">
+    <span>Cells</span><strong id="cellsLabel">0</strong>
+    <span>Pointer</span><strong id="pointerLabel">idle</strong>
+    <span>Grid</span><strong id="gridLabel">0×0</strong>
+  </div>
+  <div class="actions">
+    <button id="seedBtn" type="button">Seed scene</button>
+    <button id="clearBtn" type="button">Clear</button>
+    <button id="rainBtn" type="button">Sand rain</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+const materialInput = document.getElementById('material');
+const brushInput = document.getElementById('brush');
+const spawnInput = document.getElementById('spawn');
+const materialValue = document.getElementById('materialValue');
+const brushValue = document.getElementById('brushValue');
+const spawnValue = document.getElementById('spawnValue');
+const cellsLabel = document.getElementById('cellsLabel');
+const pointerLabel = document.getElementById('pointerLabel');
+const gridLabel = document.getElementById('gridLabel');
+const seedBtn = document.getElementById('seedBtn');
+const clearBtn = document.getElementById('clearBtn');
+const rainBtn = document.getElementById('rainBtn');
+
+let width = 0;
+let height = 0;
+let dpr = 1;
+let cols = 0;
+let rows = 0;
+let grid = [];
+let nextGrid = [];
+let imageData = null;
+const bufferCanvas = document.createElement('canvas');
+const bufferCtx = bufferCanvas.getContext('2d', { alpha: false });
+const pointer = { x: 0, y: 0, down: false, inside: false };
+
+const EMPTY = 0;
+const SAND = 1;
+const WATER = 2;
+const FIRE = 3;
+const STONE = 4;
+
+const colors = {
+  [EMPTY]: [3, 5, 10],
+  [SAND]: [230, 188, 86],
+  [WATER]: [72, 150, 255],
+  [FIRE]: [255, 120, 45],
+  [STONE]: [104, 116, 136]
+};
+
+function cell(type = EMPTY, life = 0) {
+  return { type, life, updated: false };
+}
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cols = Math.max(120, Math.floor(width / 5));
+  rows = Math.max(72, Math.floor(height / 5));
+  grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => cell()));
+  nextGrid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => cell()));
+  bufferCanvas.width = cols;
+  bufferCanvas.height = rows;
+  imageData = bufferCtx.createImageData(cols, rows);
+  gridLabel.textContent = `${cols}×${rows}`;
+  seedScene();
+}
+
+function inBounds(x, y) {
+  return x >= 0 && x < cols && y >= 0 && y < rows;
+}
+
+function swap(x1, y1, x2, y2) {
+  const temp = grid[y1][x1];
+  grid[y1][x1] = grid[y2][x2];
+  grid[y2][x2] = temp;
+  grid[y2][x2].updated = true;
+  grid[y1][x1].updated = true;
+}
+
+function setCell(x, y, type) {
+  if (!inBounds(x, y)) return;
+  grid[y][x] = type === EMPTY ? cell() : cell(type, type === FIRE ? 18 + Math.floor(Math.random() * 22) : 0);
+}
+
+function paint(screenX, screenY) {
+  const cx = Math.floor((screenX / width) * cols);
+  const cy = Math.floor((screenY / height) * rows);
+  const radius = Number(brushInput.value);
+  const amount = Number(spawnInput.value);
+  const materialMap = { sand: SAND, water: WATER, fire: FIRE, stone: STONE, erase: EMPTY };
+  const type = materialMap[materialInput.value];
+  for (let i = 0; i < amount; i++) {
+    for (let y = -radius; y <= radius; y++) {
+      for (let x = -radius; x <= radius; x++) {
+        if (x * x + y * y > radius * radius) continue;
+        if (Math.random() > 0.45) continue;
+        setCell(cx + x, cy + y, type);
+      }
+    }
+  }
+}
+
+function clearGrid() {
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) grid[y][x] = cell();
+}
+
+function seedScene() {
+  clearGrid();
+  for (let x = 0; x < cols; x++) {
+    setCell(x, rows - 1, STONE);
+    if (x % 9 < 5) setCell(x, rows - 10, STONE);
+  }
+  for (let y = rows - 28; y < rows - 10; y++) {
+    for (let x = Math.floor(cols * 0.12); x < Math.floor(cols * 0.34); x++) {
+      if (Math.random() > 0.18) setCell(x, y, WATER);
+    }
+  }
+  for (let y = 6; y < 18; y++) {
+    for (let x = Math.floor(cols * 0.56); x < Math.floor(cols * 0.74); x++) {
+      if (Math.random() > 0.22) setCell(x, y, SAND);
+    }
+  }
+}
+
+function sandRain() {
+  for (let x = 0; x < cols; x += 2) {
+    if (Math.random() > 0.35) setCell(x, 2 + Math.floor(Math.random() * 3), SAND);
+  }
+}
+
+function tryMove(x, y, targets) {
+  for (const [tx, ty] of targets) {
+    if (!inBounds(tx, ty)) continue;
+    const target = grid[ty][tx];
+    if (target.type === EMPTY || (grid[y][x].type === SAND && target.type === WATER)) {
+      swap(x, y, tx, ty);
+      return true;
+    }
+  }
+  return false;
+}
+
+function updateGrid() {
+  let active = 0;
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) grid[y][x].updated = false;
+
+  for (let y = rows - 2; y >= 0; y--) {
+    const leftToRight = y % 2 === 0;
+    const start = leftToRight ? 0 : cols - 1;
+    const end = leftToRight ? cols : -1;
+    const step = leftToRight ? 1 : -1;
+    for (let x = start; x !== end; x += step) {
+      const current = grid[y][x];
+      if (current.type === EMPTY || current.updated) continue;
+      active++;
+      if (current.type === SAND) {
+        const order = Math.random() > 0.5 ? [[x, y + 1], [x - 1, y + 1], [x + 1, y + 1]] : [[x, y + 1], [x + 1, y + 1], [x - 1, y + 1]];
+        tryMove(x, y, order);
+      } else if (current.type === WATER) {
+        const order = Math.random() > 0.5
+          ? [[x, y + 1], [x - 1, y + 1], [x + 1, y + 1], [x - 1, y], [x + 1, y]]
+          : [[x, y + 1], [x + 1, y + 1], [x - 1, y + 1], [x + 1, y], [x - 1, y]];
+        tryMove(x, y, order);
+      } else if (current.type === FIRE) {
+        current.life--;
+        if (current.life <= 0) {
+          grid[y][x] = cell();
+          continue;
+        }
+        if (inBounds(x, y - 1) && grid[y - 1][x].type === EMPTY && Math.random() > 0.25) {
+          swap(x, y, x, y - 1);
+        } else {
+          const dx = Math.random() > 0.5 ? 1 : -1;
+          if (inBounds(x + dx, y - 1) && grid[y - 1][x + dx].type === EMPTY) swap(x, y, x + dx, y - 1);
+        }
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            if (!inBounds(x + ox, y + oy)) continue;
+            if (grid[y + oy][x + ox].type === SAND && Math.random() > 0.985) setCell(x + ox, y + oy, FIRE);
+          }
+        }
+      }
+    }
+  }
+
+  if (pointer.down && pointer.inside) paint(pointer.x, pointer.y);
+  cellsLabel.textContent = String(active);
+}
+
+function renderGrid() {
+  const data = imageData.data;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const current = grid[y][x];
+      const id = (y * cols + x) * 4;
+      const base = colors[current.type];
+      let r = base[0];
+      let g = base[1];
+      let b = base[2];
+      if (current.type === FIRE) {
+        const flicker = Math.random() * 50;
+        r = 220 + flicker;
+        g = 90 + flicker * 0.5;
+        b = 20 + flicker * 0.16;
+      } else if (current.type === WATER) {
+        b += Math.sin((x + y + performance.now() * 0.02) * 0.15) * 18;
+      } else if (current.type === SAND) {
+        r += (Math.random() - 0.5) * 14;
+        g += (Math.random() - 0.5) * 10;
+      }
+      data[id] = r;
+      data[id + 1] = g;
+      data[id + 2] = b;
+      data[id + 3] = 255;
+    }
+  }
+  bufferCtx.putImageData(imageData, 0, 0);
+  ctx.fillStyle = '#03050a';
+  ctx.fillRect(0, 0, width, height);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(bufferCanvas, 0, 0, width, height);
+}
+
+function frame() {
+  updateGrid();
+  renderGrid();
+  requestAnimationFrame(frame);
+}
+
+function setPointer(event) {
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = event.clientX - rect.left;
+  pointer.y = event.clientY - rect.top;
+  pointer.inside = true;
+  pointerLabel.textContent = pointer.down ? 'painting' : 'hover';
+}
+
+canvas.addEventListener('pointerdown', (event) => {
+  pointer.down = true;
+  setPointer(event);
+  paint(pointer.x, pointer.y);
+});
+canvas.addEventListener('pointermove', setPointer);
+canvas.addEventListener('pointerup', () => {
+  pointer.down = false;
+  pointerLabel.textContent = pointer.inside ? 'hover' : 'idle';
+});
+canvas.addEventListener('pointerleave', () => {
+  pointer.down = false;
+  pointer.inside = false;
+  pointerLabel.textContent = 'idle';
+});
+
+materialInput.addEventListener('input', () => { materialValue.textContent = materialInput.value; });
+brushInput.addEventListener('input', () => { brushValue.textContent = brushInput.value; });
+spawnInput.addEventListener('input', () => { spawnValue.textContent = spawnInput.value; });
+seedBtn.addEventListener('click', seedScene);
+clearBtn.addEventListener('click', clearGrid);
+rainBtn.addEventListener('click', sandRain);
+window.addEventListener('resize', resize);
+
+resize();
+materialValue.textContent = materialInput.value;
+brushValue.textContent = brushInput.value;
+spawnValue.textContent = spawnInput.value;
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

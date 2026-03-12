@@ -1,0 +1,350 @@
+<!-- TITLE: 027 Bezier Curve Editor -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>027 — Bezier Curve Editor · creative-lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      background: radial-gradient(circle at top, #101827 0%, #05070d 60%, #020308 100%);
+      color: #e6edf3;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+    .panel {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 360px;
+      max-width: calc(100vw - 32px);
+      padding: 14px 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      background: rgba(10, 12, 16, 0.76);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 45px rgba(0,0,0,0.38);
+      z-index: 2;
+    }
+    .panel h1 { font-size: 15px; margin-bottom: 8px; }
+    .panel p, .panel label, .panel span, .panel button, .panel select {
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(230, 237, 243, 0.84);
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 84px 1fr 64px;
+      gap: 8px 10px;
+      align-items: center;
+      margin: 12px 0 10px;
+    }
+    input[type="range"], select { width: 100%; accent-color: #7dd3fc; }
+    select, button {
+      min-height: 32px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      color: #f8fafc;
+      padding: 7px 10px;
+      cursor: pointer;
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 14px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .meta strong { color: #7dd3fc; font-weight: 500; }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div class="panel">
+  <h1>Bezier Curve Editor</h1>
+  <p>Drag the control points to reshape the curve. The de Casteljau construction updates live, showing the interpolation ladder for quadratic or cubic Beziers.</p>
+  <div class="controls">
+    <label for="mode">Mode</label>
+    <select id="mode">
+      <option value="cubic">Cubic</option>
+      <option value="quadratic">Quadratic</option>
+    </select>
+    <span id="modeValue">4 pts</span>
+
+    <label for="t">t</label>
+    <input id="t" type="range" min="0" max="1" step="0.001" value="0.35">
+    <span id="tValue">0.350</span>
+
+    <label for="speed">Animate</label>
+    <input id="speed" type="range" min="0" max="1.6" step="0.01" value="0.38">
+    <span id="speedValue">0.38</span>
+  </div>
+  <div class="meta">
+    <span>Curve</span><strong id="curveLabel">cubic</strong>
+    <span>Drag</span><strong id="dragLabel">idle</strong>
+    <span>Length</span><strong id="lengthLabel">0</strong>
+  </div>
+  <div class="actions">
+    <button id="toggleBtn" type="button">Pause</button>
+    <button id="presetBtn" type="button">Preset</button>
+    <button id="resetBtn" type="button">Reset</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const modeInput = document.getElementById('mode');
+const tInput = document.getElementById('t');
+const speedInput = document.getElementById('speed');
+const modeValue = document.getElementById('modeValue');
+const tValue = document.getElementById('tValue');
+const speedValue = document.getElementById('speedValue');
+const curveLabel = document.getElementById('curveLabel');
+const dragLabel = document.getElementById('dragLabel');
+const lengthLabel = document.getElementById('lengthLabel');
+const toggleBtn = document.getElementById('toggleBtn');
+const presetBtn = document.getElementById('presetBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+let width = 0;
+let height = 0;
+let dpr = 1;
+let controlPoints = [];
+let lastTime = performance.now();
+let playing = true;
+const pointer = { x: 0, y: 0, point: null };
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (!controlPoints.length) setPreset(false);
+}
+
+function defaultPoints() {
+  return [
+    { x: width * 0.18, y: height * 0.72, hue: 195 },
+    { x: width * 0.32, y: height * 0.22, hue: 285 },
+    { x: width * 0.67, y: height * 0.82, hue: 35 },
+    { x: width * 0.82, y: height * 0.28, hue: 130 }
+  ];
+}
+
+function setPreset(randomize = true) {
+  const points = defaultPoints();
+  if (randomize) {
+    for (const p of points) {
+      p.x += (Math.random() - 0.5) * width * 0.18;
+      p.y += (Math.random() - 0.5) * height * 0.22;
+    }
+  }
+  controlPoints = points;
+}
+
+function activePoints() {
+  return modeInput.value === 'quadratic' ? controlPoints.slice(0, 3) : controlPoints.slice(0, 4);
+}
+
+function lerp(a, b, t) {
+  return {
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t
+  };
+}
+
+function bezierPoint(points, t) {
+  let layer = points.map((p) => ({ x: p.x, y: p.y }));
+  while (layer.length > 1) {
+    const next = [];
+    for (let i = 0; i < layer.length - 1; i++) next.push(lerp(layer[i], layer[i + 1], t));
+    layer = next;
+  }
+  return layer[0];
+}
+
+function casteljauLayers(points, t) {
+  const layers = [points.map((p) => ({ x: p.x, y: p.y }))];
+  while (layers[layers.length - 1].length > 1) {
+    const prev = layers[layers.length - 1];
+    const next = [];
+    for (let i = 0; i < prev.length - 1; i++) next.push(lerp(prev[i], prev[i + 1], t));
+    layers.push(next);
+  }
+  return layers;
+}
+
+function curveLength(points) {
+  let total = 0;
+  let prev = bezierPoint(points, 0);
+  for (let i = 1; i <= 120; i++) {
+    const current = bezierPoint(points, i / 120);
+    total += Math.hypot(current.x - prev.x, current.y - prev.y);
+    prev = current;
+  }
+  return total;
+}
+
+function draw(now) {
+  ctx.fillStyle = 'rgba(2, 4, 10, 0.18)';
+  ctx.fillRect(0, 0, width, height);
+  const points = activePoints();
+  const t = Number(tInput.value);
+  const layers = casteljauLayers(points, t);
+
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([7, 7]);
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.beginPath();
+  for (let i = 0; i <= 220; i++) {
+    const p = bezierPoint(points, i / 220);
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  const gradient = ctx.createLinearGradient(points[0].x, points[0].y, points[points.length - 1].x, points[points.length - 1].y);
+  gradient.addColorStop(0, '#38bdf8');
+  gradient.addColorStop(0.5, '#c084fc');
+  gradient.addColorStop(1, '#f59e0b');
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 4;
+  ctx.shadowBlur = 18;
+  ctx.shadowColor = 'rgba(96, 165, 250, 0.35)';
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  const layerColors = ['rgba(125, 211, 252, 0.9)', 'rgba(192, 132, 252, 0.9)', 'rgba(251, 191, 36, 0.95)'];
+  for (let i = 1; i < layers.length; i++) {
+    const layer = layers[i];
+    ctx.strokeStyle = layerColors[i - 1] || 'rgba(248, 250, 252, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(layer[0].x, layer[0].y);
+    for (let j = 1; j < layer.length; j++) ctx.lineTo(layer[j].x, layer[j].y);
+    ctx.stroke();
+    for (const point of layer) {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = layerColors[i - 1] || 'rgba(248, 250, 252, 0.95)';
+      ctx.fill();
+    }
+  }
+
+  const point = layers[layers.length - 1][0];
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, 7, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(248, 250, 252, 0.98)';
+  ctx.shadowBlur = 22;
+  ctx.shadowColor = 'rgba(255,255,255,0.65)';
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  for (const cp of points) {
+    ctx.beginPath();
+    ctx.arc(cp.x, cp.y, 10, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${cp.hue}, 100%, 68%, 0.95)`;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.72)';
+    ctx.stroke();
+  }
+
+  modeValue.textContent = `${points.length} pts`;
+  curveLabel.textContent = modeInput.value;
+  lengthLabel.textContent = Math.round(curveLength(points)).toString();
+}
+
+function frame(now) {
+  const dt = Math.min(0.033, (now - lastTime) / 1000);
+  lastTime = now;
+  if (playing) {
+    let t = Number(tInput.value) + dt * Number(speedInput.value) * 0.25;
+    if (t > 1) t -= 1;
+    tInput.value = t.toFixed(3);
+    tValue.textContent = tInput.value;
+  }
+  draw(now);
+  requestAnimationFrame(frame);
+}
+
+function setPointer(event) {
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = event.clientX - rect.left;
+  pointer.y = event.clientY - rect.top;
+}
+
+function nearestPoint(x, y) {
+  const points = activePoints();
+  let best = null;
+  let bestDist = 18;
+  for (const point of points) {
+    const dist = Math.hypot(point.x - x, point.y - y);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = point;
+    }
+  }
+  return best;
+}
+
+canvas.addEventListener('pointerdown', (event) => {
+  setPointer(event);
+  pointer.point = nearestPoint(pointer.x, pointer.y);
+  dragLabel.textContent = pointer.point ? 'dragging' : 'idle';
+});
+canvas.addEventListener('pointermove', (event) => {
+  setPointer(event);
+  if (pointer.point) {
+    pointer.point.x = pointer.x;
+    pointer.point.y = pointer.y;
+  }
+});
+canvas.addEventListener('pointerup', () => {
+  pointer.point = null;
+  dragLabel.textContent = 'idle';
+});
+canvas.addEventListener('pointerleave', () => {
+  pointer.point = null;
+  dragLabel.textContent = 'idle';
+});
+
+modeInput.addEventListener('input', () => {
+  curveLabel.textContent = modeInput.value;
+  modeValue.textContent = modeInput.value === 'quadratic' ? '3 pts' : '4 pts';
+});
+tInput.addEventListener('input', () => { tValue.textContent = Number(tInput.value).toFixed(3); });
+speedInput.addEventListener('input', () => { speedValue.textContent = Number(speedInput.value).toFixed(2); });
+toggleBtn.addEventListener('click', () => {
+  playing = !playing;
+  toggleBtn.textContent = playing ? 'Pause' : 'Play';
+});
+presetBtn.addEventListener('click', () => setPreset(true));
+resetBtn.addEventListener('click', () => setPreset(false));
+window.addEventListener('resize', resize);
+
+resize();
+tValue.textContent = Number(tInput.value).toFixed(3);
+speedValue.textContent = Number(speedInput.value).toFixed(2);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

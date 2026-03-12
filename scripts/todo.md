@@ -29,5 +29,5 @@
 - [x] 024 Lorenz Attractor (3D chaos, canvas projection)
 - [x] 025 Spring Network (mesh of nodes + springs, mouse drag)
 - [x] 026 Brownian Motion (particle random walk, heat map)
-- [ ] 027 Bezier Curve Editor (interactive control points, cubic/quadratic)
-- [ ] 028 Sand Simulation (cellular automaton, falling sand)
+- [x] 027 Bezier Curve Editor (interactive control points, cubic/quadratic)
+- [x] 028 Sand Simulation (cellular automaton, falling sand)
