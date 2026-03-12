@@ -1,0 +1,405 @@
+<!-- TITLE: 014 Maze Generator -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>014 — Maze Generator · creative-lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      background: #0a0a0a;
+      color: #e6edf3;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+    .panel {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 330px;
+      max-width: calc(100vw - 32px);
+      padding: 14px 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      background: rgba(10, 12, 16, 0.76);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 20px 45px rgba(0,0,0,0.38);
+      z-index: 2;
+    }
+    .panel h1 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .panel p,
+    .panel label,
+    .meta,
+    input,
+    button {
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(230, 237, 243, 0.8);
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 86px 1fr 54px;
+      gap: 8px 10px;
+      align-items: center;
+      margin: 12px 0 10px;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: #7dd3fc;
+    }
+    .actions {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 4px;
+    }
+    button {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 7px 10px;
+      color: #f8fafc;
+      cursor: pointer;
+      transition: background 140ms ease, border-color 140ms ease;
+    }
+    button:hover {
+      background: rgba(255,255,255,0.08);
+      border-color: rgba(255,255,255,0.18);
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 16px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .meta strong { color: #7dd3fc; font-weight: 500; }
+    .footer {
+      position: fixed;
+      right: 16px;
+      bottom: 12px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.38);
+      font-family: monospace;
+      z-index: 2;
+    }
+    .footer a { color: inherit; text-decoration: none; }
+    .footer a:hover { color: rgba(255,255,255,0.72); }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div class="panel">
+  <h1>DFS Maze Generator</h1>
+  <p>Depth-first backtracking carves the maze in real time. Once generated, a breadth-first search overlays the shortest route from entrance to exit across the finished labyrinth.</p>
+  <div class="controls">
+    <label for="speed">Speed</label>
+    <input id="speed" type="range" min="1" max="80" step="1" value="22">
+    <span id="speedValue">22</span>
+
+    <label for="cellSize">CellSize</label>
+    <input id="cellSize" type="range" min="10" max="42" step="1" value="22">
+    <span id="cellValue">22</span>
+
+    <div class="actions">
+      <button id="solveBtn" type="button">Solve</button>
+      <button id="regenBtn" type="button">Regenerate</button>
+    </div>
+  </div>
+  <div class="meta">
+    <span>Status</span><strong id="statusLabel">carving</strong>
+    <span>Visited</span><strong id="visitedLabel">0</strong>
+    <span>Path</span><strong id="pathLabel">0</strong>
+  </div>
+</div>
+
+<div class="footer">
+  <a href="https://github.com/bkmashiro/creative-lab">bkmashiro/creative-lab</a>
+  · <a href="https://cl.yuzhes.com">cl.yuzhes.com</a>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const speedInput = document.getElementById('speed');
+const cellSizeInput = document.getElementById('cellSize');
+const solveBtn = document.getElementById('solveBtn');
+const regenBtn = document.getElementById('regenBtn');
+const speedValue = document.getElementById('speedValue');
+const cellValue = document.getElementById('cellValue');
+const statusLabel = document.getElementById('statusLabel');
+const visitedLabel = document.getElementById('visitedLabel');
+const pathLabel = document.getElementById('pathLabel');
+
+let width = 0;
+let height = 0;
+let dpr = 1;
+let cols = 0;
+let rows = 0;
+let cellSize = Number(cellSizeInput.value);
+let cells = [];
+let stack = [];
+let current = null;
+let visitedCount = 0;
+let generationComplete = false;
+let solveRequested = false;
+let solvePath = [];
+let solveReveal = 0;
+let lastTime = performance.now();
+let accumulator = 0;
+
+function createCell(x, y) {
+  return {
+    x,
+    y,
+    walls: [true, true, true, true],
+    visited: false,
+    depth: 0,
+  };
+}
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  regenerate();
+}
+
+function index(x, y) {
+  if (x < 0 || y < 0 || x >= cols || y >= rows) return -1;
+  return y * cols + x;
+}
+
+function regenerate() {
+  cellSize = Number(cellSizeInput.value);
+  cols = Math.max(6, Math.floor((width - 40) / cellSize));
+  rows = Math.max(6, Math.floor((height - 40) / cellSize));
+  cells = [];
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      cells.push(createCell(x, y));
+    }
+  }
+  current = cells[0];
+  current.visited = true;
+  current.depth = 0;
+  stack = [current];
+  visitedCount = 1;
+  generationComplete = false;
+  solveRequested = false;
+  solvePath = [];
+  solveReveal = 0;
+  statusLabel.textContent = 'carving';
+  visitedLabel.textContent = `${visitedCount}/${cells.length}`;
+  pathLabel.textContent = '0';
+}
+
+function neighbors(cell) {
+  return [
+    { dir: 0, dx: 0, dy: -1, opposite: 2 },
+    { dir: 1, dx: 1, dy: 0, opposite: 3 },
+    { dir: 2, dx: 0, dy: 1, opposite: 0 },
+    { dir: 3, dx: -1, dy: 0, opposite: 1 },
+  ].map(move => {
+    const nextIndex = index(cell.x + move.dx, cell.y + move.dy);
+    return nextIndex >= 0 ? { ...move, cell: cells[nextIndex] } : null;
+  }).filter(Boolean);
+}
+
+function stepGeneration() {
+  if (generationComplete || !current) return;
+  const unvisited = neighbors(current).filter(item => !item.cell.visited);
+  if (unvisited.length) {
+    const choice = unvisited[Math.floor(Math.random() * unvisited.length)];
+    current.walls[choice.dir] = false;
+    choice.cell.walls[choice.opposite] = false;
+    choice.cell.visited = true;
+    choice.cell.depth = current.depth + 1;
+    current = choice.cell;
+    stack.push(current);
+    visitedCount++;
+    visitedLabel.textContent = `${visitedCount}/${cells.length}`;
+  } else {
+    stack.pop();
+    current = stack[stack.length - 1] || null;
+    if (!current) {
+      generationComplete = true;
+      statusLabel.textContent = solveRequested ? 'solving' : 'complete';
+      if (solveRequested) solveMaze();
+    }
+  }
+}
+
+function solveMaze() {
+  if (!generationComplete) {
+    solveRequested = true;
+    statusLabel.textContent = 'queued';
+    return;
+  }
+
+  const start = cells[0];
+  const goal = cells[cells.length - 1];
+  const queue = [start];
+  const parent = new Map([[start, null]]);
+  let head = 0;
+
+  while (head < queue.length) {
+    const cell = queue[head++];
+    if (cell === goal) break;
+    const options = neighbors(cell).filter(item => !cell.walls[item.dir]);
+    for (const option of options) {
+      if (!parent.has(option.cell)) {
+        parent.set(option.cell, cell);
+        queue.push(option.cell);
+      }
+    }
+  }
+
+  const path = [];
+  let node = goal;
+  while (node) {
+    path.push(node);
+    node = parent.get(node) || null;
+  }
+  solvePath = path.reverse();
+  solveReveal = 0;
+  solveRequested = false;
+  statusLabel.textContent = 'solving';
+  pathLabel.textContent = String(solvePath.length);
+}
+
+function background() {
+  const gradient = ctx.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, '#07111b');
+  gradient.addColorStop(0.4, '#120d1f');
+  gradient.addColorStop(1, '#020202');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+}
+
+function cellFill(cell) {
+  const t = cells.length <= 1 ? 0 : cell.depth / Math.max(1, cells.length - 1);
+  const hue = 190 + t * 130;
+  const light = cell.visited ? 20 + t * 18 : 8;
+  const alpha = cell.visited ? 0.9 : 0.28;
+  return `hsla(${hue.toFixed(1)} 90% ${light.toFixed(1)}% / ${alpha.toFixed(2)})`;
+}
+
+function renderMaze() {
+  const mazeWidth = cols * cellSize;
+  const mazeHeight = rows * cellSize;
+  const offsetX = (width - mazeWidth) * 0.5;
+  const offsetY = (height - mazeHeight) * 0.5;
+
+  ctx.save();
+  ctx.translate(offsetX, offsetY);
+
+  for (const cell of cells) {
+    const x = cell.x * cellSize;
+    const y = cell.y * cellSize;
+    ctx.fillStyle = cellFill(cell);
+    ctx.fillRect(x, y, cellSize, cellSize);
+  }
+
+  ctx.lineWidth = Math.max(2, cellSize * 0.12);
+  ctx.lineCap = 'round';
+  for (const cell of cells) {
+    const x = cell.x * cellSize;
+    const y = cell.y * cellSize;
+    const g = ctx.createLinearGradient(x, y, x + cellSize, y + cellSize);
+    const t = (cell.x + cell.y) / Math.max(1, cols + rows - 2);
+    g.addColorStop(0, `hsla(${180 + t * 100} 95% 72% / 0.9)`);
+    g.addColorStop(1, `hsla(${260 + t * 60} 95% 60% / 0.7)`);
+    ctx.strokeStyle = g;
+    ctx.beginPath();
+    if (cell.walls[0]) { ctx.moveTo(x, y); ctx.lineTo(x + cellSize, y); }
+    if (cell.walls[1]) { ctx.moveTo(x + cellSize, y); ctx.lineTo(x + cellSize, y + cellSize); }
+    if (cell.walls[2]) { ctx.moveTo(x + cellSize, y + cellSize); ctx.lineTo(x, y + cellSize); }
+    if (cell.walls[3]) { ctx.moveTo(x, y + cellSize); ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+
+  const startPulse = 0.5 + Math.sin(performance.now() * 0.004) * 0.08;
+  ctx.fillStyle = `rgba(34, 197, 94, ${startPulse.toFixed(2)})`;
+  ctx.fillRect(3, 3, cellSize - 6, cellSize - 6);
+  ctx.fillStyle = 'rgba(244, 63, 94, 0.78)';
+  ctx.fillRect((cols - 1) * cellSize + 3, (rows - 1) * cellSize + 3, cellSize - 6, cellSize - 6);
+
+  if (solvePath.length) {
+    const visible = Math.min(solvePath.length, Math.floor(solveReveal));
+    if (visible > 1) {
+      ctx.strokeStyle = 'rgba(250, 250, 250, 0.92)';
+      ctx.lineWidth = Math.max(3, cellSize * 0.22);
+      ctx.beginPath();
+      for (let i = 0; i < visible; i++) {
+        const cell = solvePath[i];
+        const px = cell.x * cellSize + cellSize * 0.5;
+        const py = cell.y * cellSize + cellSize * 0.5;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
+function tick(now) {
+  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+  accumulator += dt;
+  const stepsPerSecond = Number(speedInput.value) * 2;
+  const stepInterval = 1 / stepsPerSecond;
+
+  while (accumulator >= stepInterval) {
+    stepGeneration();
+    accumulator -= stepInterval;
+  }
+
+  if (solvePath.length && solveReveal < solvePath.length) {
+    solveReveal += dt * Math.max(20, Number(speedInput.value) * 1.6);
+    if (solveReveal >= solvePath.length) {
+      solveReveal = solvePath.length;
+      statusLabel.textContent = 'solved';
+    }
+  }
+
+  background();
+  renderMaze();
+  requestAnimationFrame(tick);
+}
+
+speedInput.addEventListener('input', () => {
+  speedValue.textContent = speedInput.value;
+});
+
+cellSizeInput.addEventListener('input', () => {
+  cellValue.textContent = cellSizeInput.value;
+  regenerate();
+});
+
+solveBtn.addEventListener('click', solveMaze);
+regenBtn.addEventListener('click', regenerate);
+window.addEventListener('resize', resize);
+
+speedValue.textContent = speedInput.value;
+cellValue.textContent = cellSizeInput.value;
+resize();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

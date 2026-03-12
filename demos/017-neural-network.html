@@ -1,0 +1,436 @@
+<!-- TITLE: 017 Neural Network -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>017 — Neural Network · creative-lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      background: #0a0a0a;
+      color: #e6edf3;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    canvas { display: block; width: 100%; height: 100%; cursor: pointer; }
+    .panel {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 340px;
+      max-width: calc(100vw - 32px);
+      padding: 14px 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      background: rgba(10, 12, 16, 0.8);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 20px 45px rgba(0,0,0,0.38);
+      z-index: 2;
+    }
+    .panel h1 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .panel p,
+    .panel label,
+    .panel button,
+    .panel select,
+    .panel span {
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(230, 237, 243, 0.84);
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 102px 1fr 52px;
+      gap: 8px 10px;
+      align-items: center;
+      margin: 12px 0 10px;
+    }
+    .controls .wide { grid-column: span 2; }
+    input[type="range"], select {
+      width: 100%;
+      accent-color: #60a5fa;
+    }
+    select, button {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 7px 9px;
+      color: #f8fafc;
+    }
+    .layerButtons,
+    .buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 16px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .meta strong { color: #7dd3fc; font-weight: 500; }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div class="panel">
+  <h1>Neural Network Visualizer</h1>
+  <p>Click input nodes to set values, then step the forward pass. Edge color shows weight sign and magnitude while node glow tracks activation.</p>
+  <div class="layerButtons">
+    <button id="removeLayer">Remove layer</button>
+    <button id="addLayer">Add layer</button>
+  </div>
+  <div class="controls">
+    <label for="neurons">Hidden width</label>
+    <input id="neurons" type="range" min="3" max="8" step="1" value="5">
+    <span id="neuronsValue">5</span>
+
+    <label for="activation">Activation</label>
+    <select id="activation" class="wide">
+      <option value="relu">ReLU</option>
+      <option value="sigmoid">Sigmoid</option>
+      <option value="tanh">Tanh</option>
+    </select>
+  </div>
+  <div class="meta">
+    <span>Layers</span><strong id="layersLabel">4</strong>
+    <span>Mode</span><strong id="modeLabel">manual</strong>
+  </div>
+  <div class="buttons">
+    <button id="randomInput">Random input</button>
+    <button id="toggleAuto">Auto</button>
+    <button id="step">Step</button>
+    <button id="reshuffle">Reshuffle</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const neuronsInput = document.getElementById('neurons');
+const activationInput = document.getElementById('activation');
+const addLayerButton = document.getElementById('addLayer');
+const removeLayerButton = document.getElementById('removeLayer');
+const randomInputButton = document.getElementById('randomInput');
+const toggleAutoButton = document.getElementById('toggleAuto');
+const stepButton = document.getElementById('step');
+const reshuffleButton = document.getElementById('reshuffle');
+const neuronsValue = document.getElementById('neuronsValue');
+const layersLabel = document.getElementById('layersLabel');
+const modeLabel = document.getElementById('modeLabel');
+
+let width = 0;
+let height = 0;
+let dpr = 1;
+let autoMode = false;
+let lastTime = performance.now();
+let autoTimer = 0;
+let hiddenLayerCount = 2;
+let layerSizes = [];
+let activations = [];
+let displayActivations = [];
+let biases = [];
+let weights = [];
+let pulses = [];
+let nodePositions = [];
+let stage = 0;
+let stageProgress = 1;
+let stageOutputs = [];
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function activationFn(value) {
+  if (activationInput.value === 'sigmoid') {
+    return 1 / (1 + Math.exp(-value));
+  }
+  if (activationInput.value === 'tanh') {
+    return Math.tanh(value);
+  }
+  return Math.max(0, value);
+}
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  updateLayout();
+}
+
+function updateLayerSizes() {
+  layerSizes = [4];
+  for (let i = 0; i < hiddenLayerCount; i++) {
+    layerSizes.push(Number(neuronsInput.value));
+  }
+  layerSizes.push(3);
+  layersLabel.textContent = String(layerSizes.length);
+}
+
+function randomWeight() {
+  return (Math.random() * 2 - 1) * 1.1;
+}
+
+function rebuildNetwork() {
+  updateLayerSizes();
+  weights = [];
+  biases = [];
+  activations = layerSizes.map((size, layerIndex) => Array.from({ length: size }, (_, nodeIndex) => {
+    if (layerIndex === 0) {
+      return nodeIndex % 2 === 0 ? 1 : 0;
+    }
+    return 0;
+  }));
+  displayActivations = activations.map((layer) => layer.slice());
+
+  for (let layer = 0; layer < layerSizes.length - 1; layer++) {
+    const rows = [];
+    const biasRow = [];
+    for (let from = 0; from < layerSizes[layer]; from++) {
+      rows.push(Array.from({ length: layerSizes[layer + 1] }, randomWeight));
+    }
+    for (let to = 0; to < layerSizes[layer + 1]; to++) {
+      biasRow.push(randomWeight() * 0.6);
+    }
+    weights.push(rows);
+    biases.push(biasRow);
+  }
+  stage = 0;
+  stageProgress = 1;
+  stageOutputs = [];
+  pulses = [];
+  updateLayout();
+}
+
+function updateLayout() {
+  nodePositions = [];
+  const left = 90;
+  const right = width - 90;
+  const top = 110;
+  const bottom = height - 90;
+  const layerCount = Math.max(1, layerSizes.length - 1);
+
+  for (let layer = 0; layer < layerSizes.length; layer++) {
+    const x = layerCount === 0 ? width * 0.5 : lerp(left, right, layer / layerCount);
+    const size = layerSizes[layer];
+    const usableHeight = bottom - top;
+    const gap = size <= 1 ? 0 : usableHeight / (size - 1);
+    const positions = [];
+    for (let node = 0; node < size; node++) {
+      positions.push({
+        x,
+        y: size === 1 ? height * 0.5 : top + gap * node,
+        r: layer === 0 ? 18 : 16,
+      });
+    }
+    nodePositions.push(positions);
+  }
+}
+
+function randomizeInputs() {
+  activations[0] = activations[0].map(() => Math.random());
+}
+
+function startStep() {
+  stage = 0;
+  stageProgress = 0;
+  stageOutputs = [activations[0].slice()];
+  pulses = [];
+}
+
+function advanceStage() {
+  if (stage >= weights.length) {
+    stageProgress = 1;
+    return;
+  }
+  const inputValues = stageOutputs[stage];
+  const outputs = Array.from({ length: layerSizes[stage + 1] }, (_, to) => {
+    let sum = biases[stage][to];
+    for (let from = 0; from < inputValues.length; from++) {
+      sum += inputValues[from] * weights[stage][from][to];
+    }
+    return activationFn(sum);
+  });
+
+  stageOutputs[stage + 1] = outputs;
+  pulses = [];
+  for (let from = 0; from < layerSizes[stage]; from++) {
+    for (let to = 0; to < layerSizes[stage + 1]; to++) {
+      pulses.push({
+        layer: stage,
+        from,
+        to,
+        weight: weights[stage][from][to],
+        strength: Math.abs(inputValues[from] * weights[stage][from][to]),
+      });
+    }
+  }
+}
+
+function completeStep() {
+  for (let i = 0; i < stageOutputs.length; i++) {
+    activations[i] = stageOutputs[i].slice();
+  }
+}
+
+function weightColor(weight, alpha) {
+  const strength = Math.min(1, Math.abs(weight) / 1.1);
+  if (weight >= 0) {
+    return `rgba(96, 165, 250, ${0.12 + strength * alpha})`;
+  }
+  return `rgba(248, 113, 113, ${0.12 + strength * alpha})`;
+}
+
+function drawNetwork() {
+  const gradient = ctx.createRadialGradient(width * 0.5, height * 0.45, 80, width * 0.5, height * 0.45, Math.max(width, height) * 0.7);
+  gradient.addColorStop(0, '#131b2d');
+  gradient.addColorStop(0.45, '#0c111c');
+  gradient.addColorStop(1, '#050608');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  for (let layer = 0; layer < weights.length; layer++) {
+    for (let from = 0; from < weights[layer].length; from++) {
+      for (let to = 0; to < weights[layer][from].length; to++) {
+        const a = nodePositions[layer][from];
+        const b = nodePositions[layer + 1][to];
+        ctx.strokeStyle = weightColor(weights[layer][from][to], 0.6);
+        ctx.lineWidth = 1 + Math.abs(weights[layer][from][to]) * 1.4;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  for (let i = 0; i < pulses.length; i++) {
+    const pulse = pulses[i];
+    const a = nodePositions[pulse.layer][pulse.from];
+    const b = nodePositions[pulse.layer + 1][pulse.to];
+    const x = lerp(a.x, b.x, stageProgress);
+    const y = lerp(a.y, b.y, stageProgress);
+    ctx.fillStyle = pulse.weight >= 0 ? `rgba(125, 211, 252, ${0.2 + pulse.strength})` : `rgba(252, 165, 165, ${0.2 + pulse.strength})`;
+    ctx.beginPath();
+    ctx.arc(x, y, 2.5 + pulse.strength * 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  for (let layer = 0; layer < nodePositions.length; layer++) {
+    for (let node = 0; node < nodePositions[layer].length; node++) {
+      const pos = nodePositions[layer][node];
+      const liveValue = displayActivations[layer]?.[node] ?? 0;
+      const value = Math.max(0, Math.min(1, liveValue));
+      const hue = activationInput.value === 'tanh' ? 290 : activationInput.value === 'sigmoid' ? 140 : 205;
+      ctx.fillStyle = `hsla(${hue}, 90%, ${18 + value * 48}%, 1)`;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, pos.r + value * 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = layer === 0 ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.22)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = '11px "SF Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(liveValue.toFixed(2), pos.x, pos.y + 4);
+    }
+  }
+}
+
+function animate(now) {
+  const dt = Math.min(0.033, (now - lastTime) / 1000);
+  lastTime = now;
+
+  if (autoMode) {
+    autoTimer += dt;
+    if (stageProgress >= 1 && autoTimer > 1.05) {
+      if (Math.random() < 0.35) {
+        randomizeInputs();
+      }
+      startStep();
+      autoTimer = 0;
+    }
+  }
+
+  if (stageProgress < 1) {
+    if (pulses.length === 0 && stage < weights.length) {
+      advanceStage();
+    }
+    stageProgress += dt * 1.5;
+    if (stageProgress >= 1) {
+      stageProgress = 1;
+      stage += 1;
+      completeStep();
+      pulses = [];
+      if (stage < weights.length) {
+        stageProgress = 0;
+      }
+    }
+  }
+
+  for (let layer = 0; layer < activations.length; layer++) {
+    for (let node = 0; node < activations[layer].length; node++) {
+      displayActivations[layer][node] = lerp(displayActivations[layer][node], activations[layer][node], dt * 5.5);
+    }
+  }
+
+  modeLabel.textContent = autoMode ? 'auto' : 'manual';
+  drawNetwork();
+  requestAnimationFrame(animate);
+}
+
+canvas.addEventListener('pointerdown', (event) => {
+  const inputNodes = nodePositions[0] || [];
+  for (let i = 0; i < inputNodes.length; i++) {
+    const node = inputNodes[i];
+    const distance = Math.hypot(event.clientX - node.x, event.clientY - node.y);
+    if (distance <= node.r + 8) {
+      activations[0][i] = (Math.round((activations[0][i] + 0.25) * 4) % 5) / 4;
+      return;
+    }
+  }
+});
+
+neuronsInput.addEventListener('input', () => {
+  neuronsValue.textContent = neuronsInput.value;
+  rebuildNetwork();
+});
+
+activationInput.addEventListener('change', startStep);
+addLayerButton.addEventListener('click', () => {
+  hiddenLayerCount = Math.min(4, hiddenLayerCount + 1);
+  rebuildNetwork();
+});
+removeLayerButton.addEventListener('click', () => {
+  hiddenLayerCount = Math.max(1, hiddenLayerCount - 1);
+  rebuildNetwork();
+});
+randomInputButton.addEventListener('click', randomizeInputs);
+toggleAutoButton.addEventListener('click', () => {
+  autoMode = !autoMode;
+  toggleAutoButton.textContent = autoMode ? 'Auto on' : 'Auto';
+});
+stepButton.addEventListener('click', startStep);
+reshuffleButton.addEventListener('click', rebuildNetwork);
+window.addEventListener('resize', resize);
+
+resize();
+neuronsValue.textContent = neuronsInput.value;
+rebuildNetwork();
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

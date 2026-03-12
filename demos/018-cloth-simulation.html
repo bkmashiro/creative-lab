@@ -1,0 +1,376 @@
+<!-- TITLE: 018 Cloth Simulation -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>018 — Cloth Simulation · creative-lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      background: #0a0a0a;
+      color: #e6edf3;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+    canvas.dragging { cursor: grabbing; }
+    .panel {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 320px;
+      max-width: calc(100vw - 32px);
+      padding: 14px 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      background: rgba(10, 12, 16, 0.78);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 20px 45px rgba(0,0,0,0.38);
+      z-index: 2;
+    }
+    .panel h1 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .panel p,
+    .panel label,
+    .panel button,
+    .panel span {
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(230, 237, 243, 0.84);
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 92px 1fr 52px;
+      gap: 8px 10px;
+      align-items: center;
+      margin: 12px 0 10px;
+    }
+    input[type="range"], input[type="checkbox"] {
+      width: 100%;
+      accent-color: #93c5fd;
+    }
+    button {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 7px 9px;
+      color: #f8fafc;
+      margin-top: 10px;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 16px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .meta strong { color: #7dd3fc; font-weight: 500; }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div class="panel">
+  <h1>Cloth Simulation</h1>
+  <p>Drag the fabric to pull it around the pinned edge. Wind and gravity shape the sheet, and tear mode can break spring constraints.</p>
+  <div class="controls">
+    <label for="gravity">Gravity</label>
+    <input id="gravity" type="range" min="100" max="1400" step="10" value="620">
+    <span id="gravityValue">620</span>
+
+    <label for="wind">Wind</label>
+    <input id="wind" type="range" min="0" max="1200" step="10" value="260">
+    <span id="windValue">260</span>
+
+    <label for="stiffness">Stiffness</label>
+    <input id="stiffness" type="range" min="0.5" max="1" step="0.01" value="0.84">
+    <span id="stiffnessValue">0.84</span>
+
+    <label for="damping">Damping</label>
+    <input id="damping" type="range" min="0.90" max="0.999" step="0.001" value="0.985">
+    <span id="dampingValue">0.985</span>
+
+    <label for="tear">Tear mode</label>
+    <input id="tear" type="checkbox">
+    <span id="tearValue">off</span>
+  </div>
+  <div class="meta">
+    <span>Springs</span><strong id="springsLabel">0</strong>
+    <span>Drag</span><strong id="dragLabel">idle</strong>
+  </div>
+  <button id="reset">Reset</button>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const gravityInput = document.getElementById('gravity');
+const windInput = document.getElementById('wind');
+const stiffnessInput = document.getElementById('stiffness');
+const dampingInput = document.getElementById('damping');
+const tearInput = document.getElementById('tear');
+const resetButton = document.getElementById('reset');
+const gravityValue = document.getElementById('gravityValue');
+const windValue = document.getElementById('windValue');
+const stiffnessValue = document.getElementById('stiffnessValue');
+const dampingValue = document.getElementById('dampingValue');
+const tearValue = document.getElementById('tearValue');
+const springsLabel = document.getElementById('springsLabel');
+const dragLabel = document.getElementById('dragLabel');
+
+let width = 0;
+let height = 0;
+let dpr = 1;
+let points = [];
+let springs = [];
+let cols = 0;
+let rows = 0;
+let spacing = 18;
+let lastTime = performance.now();
+const pointer = { x: 0, y: 0, down: false, point: null, lastX: 0, lastY: 0 };
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  buildCloth();
+}
+
+function createPoint(x, y, pinned = false) {
+  return { x, y, oldX: x, oldY: y, pinned };
+}
+
+function connect(a, b) {
+  springs.push({ a, b, rest: Math.hypot(a.x - b.x, a.y - b.y), broken: false });
+}
+
+function buildCloth() {
+  points = [];
+  springs = [];
+  cols = Math.max(18, Math.floor(Math.min(width * 0.55, 520) / spacing));
+  rows = Math.max(14, Math.floor(Math.min(height * 0.55, 360) / spacing));
+  const startX = width * 0.5 - ((cols - 1) * spacing) * 0.5;
+  const startY = 72;
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      points.push(createPoint(startX + x * spacing, startY + y * spacing, y === 0));
+    }
+  }
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const point = points[y * cols + x];
+      if (x < cols - 1) {
+        connect(point, points[y * cols + x + 1]);
+      }
+      if (y < rows - 1) {
+        connect(point, points[(y + 1) * cols + x]);
+      }
+    }
+  }
+
+  springsLabel.textContent = String(springs.length);
+}
+
+function nearestPoint(x, y) {
+  let best = null;
+  let bestDistance = 26;
+  for (let i = 0; i < points.length; i++) {
+    const point = points[i];
+    const distance = Math.hypot(point.x - x, point.y - y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = point;
+    }
+  }
+  return best;
+}
+
+function simulate(dt, now) {
+  const gravity = Number(gravityInput.value);
+  const damping = Number(dampingInput.value);
+  const windStrength = Number(windInput.value);
+
+  for (let i = 0; i < points.length; i++) {
+    const point = points[i];
+    if (point.pinned) {
+      continue;
+    }
+    const vx = (point.x - point.oldX) * damping;
+    const vy = (point.y - point.oldY) * damping;
+    const wind = Math.sin(now * 0.0017 + point.y * 0.02) * windStrength;
+    point.oldX = point.x;
+    point.oldY = point.y;
+    point.x += vx + wind * dt * dt;
+    point.y += vy + gravity * dt * dt;
+  }
+
+  if (pointer.down && pointer.point) {
+    const dx = pointer.x - pointer.lastX;
+    const dy = pointer.y - pointer.lastY;
+    pointer.point.x = pointer.x;
+    pointer.point.y = pointer.y;
+    pointer.point.oldX = pointer.point.x - dx;
+    pointer.point.oldY = pointer.point.y - dy;
+  }
+
+  const stiffness = Number(stiffnessInput.value);
+  for (let iteration = 0; iteration < 5; iteration++) {
+    for (let i = 0; i < springs.length; i++) {
+      const spring = springs[i];
+      if (spring.broken) {
+        continue;
+      }
+      const dx = spring.b.x - spring.a.x;
+      const dy = spring.b.y - spring.a.y;
+      const dist = Math.hypot(dx, dy) || 0.0001;
+      const diff = (dist - spring.rest) / dist;
+
+      if (tearInput.checked && pointer.down) {
+        const midX = (spring.a.x + spring.b.x) * 0.5;
+        const midY = (spring.a.y + spring.b.y) * 0.5;
+        const tearDistance = Math.hypot(pointer.x - midX, pointer.y - midY);
+        if (tearDistance < 16 && dist > spring.rest * 1.45) {
+          spring.broken = true;
+          continue;
+        }
+      }
+
+      const offsetX = dx * 0.5 * diff * stiffness;
+      const offsetY = dy * 0.5 * diff * stiffness;
+
+      if (!spring.a.pinned && spring.a !== pointer.point) {
+        spring.a.x += offsetX;
+        spring.a.y += offsetY;
+      }
+      if (!spring.b.pinned && spring.b !== pointer.point) {
+        spring.b.x -= offsetX;
+        spring.b.y -= offsetY;
+      }
+    }
+
+    for (let i = 0; i < points.length; i++) {
+      const point = points[i];
+      if (point.pinned || point === pointer.point) {
+        continue;
+      }
+      point.x = Math.max(8, Math.min(width - 8, point.x));
+      point.y = Math.max(8, Math.min(height - 8, point.y));
+    }
+  }
+}
+
+function draw(now) {
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, '#111827');
+  gradient.addColorStop(0.45, '#0a0f1a');
+  gradient.addColorStop(1, '#040507');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  for (let i = 0; i < 10; i++) {
+    const y = (height / 10) * i;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(147, 197, 253, 0.45)';
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < springs.length; i++) {
+    const spring = springs[i];
+    if (spring.broken) {
+      continue;
+    }
+    const sway = 0.18 + Math.sin(now * 0.001 + i) * 0.04;
+    ctx.strokeStyle = `rgba(147, 197, 253, ${sway})`;
+    ctx.beginPath();
+    ctx.moveTo(spring.a.x, spring.a.y);
+    ctx.lineTo(spring.b.x, spring.b.y);
+    ctx.stroke();
+  }
+
+  for (let i = 0; i < points.length; i++) {
+    const point = points[i];
+    if (point.pinned) {
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function animate(now) {
+  const dt = Math.min(0.033, (now - lastTime) / 1000) * 60;
+  lastTime = now;
+  simulate(dt, now);
+  draw(now);
+  requestAnimationFrame(animate);
+}
+
+function syncLabels() {
+  gravityValue.textContent = gravityInput.value;
+  windValue.textContent = windInput.value;
+  stiffnessValue.textContent = Number(stiffnessInput.value).toFixed(2);
+  dampingValue.textContent = Number(dampingInput.value).toFixed(3);
+  tearValue.textContent = tearInput.checked ? 'on' : 'off';
+}
+
+canvas.addEventListener('pointerdown', (event) => {
+  pointer.down = true;
+  pointer.x = event.clientX;
+  pointer.y = event.clientY;
+  pointer.lastX = pointer.x;
+  pointer.lastY = pointer.y;
+  pointer.point = nearestPoint(pointer.x, pointer.y);
+  canvas.classList.add('dragging');
+  dragLabel.textContent = pointer.point ? 'active' : 'idle';
+});
+
+canvas.addEventListener('pointermove', (event) => {
+  pointer.lastX = pointer.x;
+  pointer.lastY = pointer.y;
+  pointer.x = event.clientX;
+  pointer.y = event.clientY;
+});
+
+function releasePointer() {
+  pointer.down = false;
+  pointer.point = null;
+  canvas.classList.remove('dragging');
+  dragLabel.textContent = 'idle';
+}
+
+canvas.addEventListener('pointerup', releasePointer);
+canvas.addEventListener('pointerleave', releasePointer);
+gravityInput.addEventListener('input', syncLabels);
+windInput.addEventListener('input', syncLabels);
+stiffnessInput.addEventListener('input', syncLabels);
+dampingInput.addEventListener('input', syncLabels);
+tearInput.addEventListener('change', syncLabels);
+resetButton.addEventListener('click', buildCloth);
+window.addEventListener('resize', resize);
+
+resize();
+syncLabels();
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
