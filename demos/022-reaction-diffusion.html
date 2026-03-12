@@ -1,0 +1,325 @@
+<!-- TITLE: 022 Reaction Diffusion -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>022 — Reaction Diffusion · creative-lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      background: #03050a;
+      color: #e6edf3;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    canvas { display: block; width: 100%; height: 100%; cursor: crosshair; image-rendering: pixelated; }
+    .panel {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 352px;
+      max-width: calc(100vw - 32px);
+      padding: 14px 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      background: rgba(10, 12, 16, 0.76);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 45px rgba(0,0,0,0.38);
+      z-index: 2;
+    }
+    .panel h1 { font-size: 15px; margin-bottom: 8px; }
+    .panel p, .panel label, .panel span, .panel button {
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(230, 237, 243, 0.84);
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 92px 1fr 60px;
+      gap: 8px 10px;
+      align-items: center;
+      margin: 12px 0 10px;
+    }
+    input[type="range"] { width: 100%; accent-color: #7dd3fc; }
+    button {
+      width: 100%;
+      min-height: 32px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      color: #f8fafc;
+      padding: 7px 10px;
+      cursor: pointer;
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 14px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .meta strong { color: #7dd3fc; font-weight: 500; }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div class="panel">
+  <h1>Reaction Diffusion</h1>
+  <p>Gray-Scott chemistry evolves into living Turing patterns. Paint reagent B into the field and tune feed or kill to shift between spots, stripes, and coral growth.</p>
+  <div class="controls">
+    <label for="feed">Feed</label>
+    <input id="feed" type="range" min="0.01" max="0.09" step="0.0005" value="0.0367">
+    <span id="feedValue">0.0367</span>
+
+    <label for="kill">Kill</label>
+    <input id="kill" type="range" min="0.03" max="0.075" step="0.0005" value="0.0649">
+    <span id="killValue">0.0649</span>
+
+    <label for="brush">Brush</label>
+    <input id="brush" type="range" min="2" max="24" step="1" value="8">
+    <span id="brushValue">8</span>
+
+    <label for="steps">Steps</label>
+    <input id="steps" type="range" min="1" max="24" step="1" value="10">
+    <span id="stepsValue">10</span>
+  </div>
+  <div class="meta">
+    <span>Grid</span><strong id="gridLabel">0×0</strong>
+    <span>Pointer</span><strong id="pointerLabel">idle</strong>
+    <span>Pattern</span><strong id="patternLabel">seeded</strong>
+  </div>
+  <div class="actions">
+    <button id="seedBtn" type="button">Reseed</button>
+    <button id="randomBtn" type="button">Burst</button>
+    <button id="clearBtn" type="button">Clear</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+const feedInput = document.getElementById('feed');
+const killInput = document.getElementById('kill');
+const brushInput = document.getElementById('brush');
+const stepsInput = document.getElementById('steps');
+const feedValue = document.getElementById('feedValue');
+const killValue = document.getElementById('killValue');
+const brushValue = document.getElementById('brushValue');
+const stepsValue = document.getElementById('stepsValue');
+const gridLabel = document.getElementById('gridLabel');
+const pointerLabel = document.getElementById('pointerLabel');
+const patternLabel = document.getElementById('patternLabel');
+const seedBtn = document.getElementById('seedBtn');
+const randomBtn = document.getElementById('randomBtn');
+const clearBtn = document.getElementById('clearBtn');
+
+let width = 0;
+let height = 0;
+let dpr = 1;
+let cols = 0;
+let rows = 0;
+let u = new Float32Array(0);
+let v = new Float32Array(0);
+let uNext = new Float32Array(0);
+let vNext = new Float32Array(0);
+let imageData = null;
+const bufferCanvas = document.createElement('canvas');
+const bufferCtx = bufferCanvas.getContext('2d', { alpha: false });
+const pointer = { x: 0, y: 0, down: false, inside: false };
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function index(x, y) {
+  return y * cols + x;
+}
+
+function laplacian(field, x, y) {
+  const id = index(x, y);
+  return (
+    field[index(x - 1, y)] +
+    field[index(x + 1, y)] +
+    field[index(x, y - 1)] +
+    field[index(x, y + 1)] -
+    4 * field[id]
+  );
+}
+
+function allocate() {
+  cols = Math.max(120, Math.floor(width / 4));
+  rows = Math.max(72, Math.floor(height / 4));
+  const count = cols * rows;
+  u = new Float32Array(count);
+  v = new Float32Array(count);
+  uNext = new Float32Array(count);
+  vNext = new Float32Array(count);
+  imageData = bufferCtx.createImageData(cols, rows);
+  bufferCanvas.width = cols;
+  bufferCanvas.height = rows;
+  gridLabel.textContent = `${cols}×${rows}`;
+  seedField();
+}
+
+function seedField() {
+  u.fill(1);
+  v.fill(0);
+  const centerX = Math.floor(cols * 0.5);
+  const centerY = Math.floor(rows * 0.5);
+  for (let y = -16; y <= 16; y++) {
+    for (let x = -16; x <= 16; x++) {
+      if (x * x + y * y < 220) {
+        const id = index(clamp(centerX + x, 0, cols - 1), clamp(centerY + y, 0, rows - 1));
+        v[id] = 1;
+        u[id] = 0.2;
+      }
+    }
+  }
+  for (let i = 0; i < 8; i++) burst(Math.random() * width, Math.random() * height, 4 + Math.random() * 8);
+  patternLabel.textContent = 'seeded';
+}
+
+function clearField() {
+  u.fill(1);
+  v.fill(0);
+  patternLabel.textContent = 'blank';
+}
+
+function burst(screenX, screenY, radius) {
+  const x0 = Math.floor((screenX / width) * cols);
+  const y0 = Math.floor((screenY / height) * rows);
+  for (let y = -radius; y <= radius; y++) {
+    for (let x = -radius; x <= radius; x++) {
+      if (x * x + y * y > radius * radius) continue;
+      const sx = clamp(x0 + x, 1, cols - 2);
+      const sy = clamp(y0 + y, 1, rows - 2);
+      const id = index(sx, sy);
+      v[id] = 1;
+      u[id] = 0.15;
+    }
+  }
+}
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  allocate();
+}
+
+function updateSimulation() {
+  const feed = Number(feedInput.value);
+  const kill = Number(killInput.value);
+  const du = 1.0;
+  const dv = 0.5;
+  const steps = Number(stepsInput.value);
+
+  for (let iter = 0; iter < steps; iter++) {
+    for (let y = 1; y < rows - 1; y++) {
+      for (let x = 1; x < cols - 1; x++) {
+        const id = index(x, y);
+        const a = u[id];
+        const b = v[id];
+        const reaction = a * b * b;
+        uNext[id] = clamp(a + (du * laplacian(u, x, y) - reaction + feed * (1 - a)), 0, 1);
+        vNext[id] = clamp(b + (dv * laplacian(v, x, y) + reaction - (kill + feed) * b), 0, 1);
+      }
+    }
+
+    if (pointer.down && pointer.inside) {
+      burst(pointer.x, pointer.y, Number(brushInput.value));
+      patternLabel.textContent = 'painted';
+    }
+
+    [u, uNext] = [uNext, u];
+    [v, vNext] = [vNext, v];
+  }
+}
+
+function renderField() {
+  const data = imageData.data;
+  for (let i = 0; i < v.length; i++) {
+    const value = clamp((u[i] - v[i]) * 0.8 + 0.5, 0, 1);
+    const band = Math.sin(value * Math.PI * 2.5) * 0.5 + 0.5;
+    data[i * 4] = 20 + value * 40 + band * 90;
+    data[i * 4 + 1] = 18 + value * 120 + band * 40;
+    data[i * 4 + 2] = 34 + (1 - value) * 160 + band * 50;
+    data[i * 4 + 3] = 255;
+  }
+  bufferCtx.putImageData(imageData, 0, 0);
+  ctx.fillStyle = '#03050a';
+  ctx.fillRect(0, 0, width, height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(bufferCanvas, 0, 0, width, height);
+
+  if (pointer.inside) {
+    ctx.beginPath();
+    ctx.arc(pointer.x, pointer.y, Number(brushInput.value) * (width / cols), 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(125, 211, 252, 0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+function frame() {
+  updateSimulation();
+  renderField();
+  requestAnimationFrame(frame);
+}
+
+function setPointer(event) {
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = event.clientX - rect.left;
+  pointer.y = event.clientY - rect.top;
+  pointer.inside = true;
+  pointerLabel.textContent = pointer.down ? 'painting' : 'hover';
+}
+
+canvas.addEventListener('pointerdown', (event) => {
+  pointer.down = true;
+  setPointer(event);
+});
+canvas.addEventListener('pointermove', setPointer);
+canvas.addEventListener('pointerup', () => {
+  pointer.down = false;
+  pointerLabel.textContent = pointer.inside ? 'hover' : 'idle';
+});
+canvas.addEventListener('pointerleave', () => {
+  pointer.down = false;
+  pointer.inside = false;
+  pointerLabel.textContent = 'idle';
+});
+
+feedInput.addEventListener('input', () => feedValue.textContent = Number(feedInput.value).toFixed(4));
+killInput.addEventListener('input', () => killValue.textContent = Number(killInput.value).toFixed(4));
+brushInput.addEventListener('input', () => brushValue.textContent = brushInput.value);
+stepsInput.addEventListener('input', () => stepsValue.textContent = stepsInput.value);
+seedBtn.addEventListener('click', seedField);
+randomBtn.addEventListener('click', () => {
+  for (let i = 0; i < 18; i++) burst(Math.random() * width, Math.random() * height, 3 + Math.random() * 10);
+  patternLabel.textContent = 'burst';
+});
+clearBtn.addEventListener('click', clearField);
+window.addEventListener('resize', resize);
+
+resize();
+feedValue.textContent = Number(feedInput.value).toFixed(4);
+killValue.textContent = Number(killInput.value).toFixed(4);
+brushValue.textContent = brushInput.value;
+stepsValue.textContent = stepsInput.value;
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
