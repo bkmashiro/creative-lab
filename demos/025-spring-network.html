@@ -1,0 +1,346 @@
+<!-- TITLE: 025 Spring Network -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>025 — Spring Network · creative-lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      background: radial-gradient(circle at top, #111827 0%, #05070d 58%, #020308 100%);
+      color: #e6edf3;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+    canvas.dragging { cursor: grabbing; }
+    .panel {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 344px;
+      max-width: calc(100vw - 32px);
+      padding: 14px 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      background: rgba(10, 12, 16, 0.76);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 45px rgba(0,0,0,0.38);
+      z-index: 2;
+    }
+    .panel h1 { font-size: 15px; margin-bottom: 8px; }
+    .panel p, .panel label, .panel span, .panel button {
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(230, 237, 243, 0.84);
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 96px 1fr 60px;
+      gap: 8px 10px;
+      align-items: center;
+      margin: 12px 0 10px;
+    }
+    input[type="range"] { width: 100%; accent-color: #7dd3fc; }
+    button {
+      width: 100%;
+      min-height: 32px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      color: #f8fafc;
+      padding: 7px 10px;
+      cursor: pointer;
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 14px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .meta strong { color: #7dd3fc; font-weight: 500; }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div class="panel">
+  <h1>Spring Network</h1>
+  <p>Drag any node in the mesh and the spring constraints redistribute the energy across the whole field, creating a floating elastic fabric of connected points.</p>
+  <div class="controls">
+    <label for="stiffness">Stiffness</label>
+    <input id="stiffness" type="range" min="0.01" max="0.18" step="0.005" value="0.065">
+    <span id="stiffnessValue">0.065</span>
+
+    <label for="damping">Damping</label>
+    <input id="damping" type="range" min="0.88" max="0.995" step="0.001" value="0.956">
+    <span id="dampingValue">0.956</span>
+
+    <label for="spacing">Spacing</label>
+    <input id="spacing" type="range" min="34" max="96" step="1" value="62">
+    <span id="spacingValue">62</span>
+
+    <label for="pulse">Pulse</label>
+    <input id="pulse" type="range" min="0" max="1.2" step="0.01" value="0.42">
+    <span id="pulseValue">0.42</span>
+  </div>
+  <div class="meta">
+    <span>Nodes</span><strong id="nodesLabel">0</strong>
+    <span>Springs</span><strong id="springsLabel">0</strong>
+    <span>Drag</span><strong id="dragLabel">idle</strong>
+  </div>
+  <div class="actions">
+    <button id="resetBtn" type="button">Rebuild</button>
+    <button id="kickBtn" type="button">Pulse</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const stiffnessInput = document.getElementById('stiffness');
+const dampingInput = document.getElementById('damping');
+const spacingInput = document.getElementById('spacing');
+const pulseInput = document.getElementById('pulse');
+const nodesLabel = document.getElementById('nodesLabel');
+const springsLabel = document.getElementById('springsLabel');
+const dragLabel = document.getElementById('dragLabel');
+const resetBtn = document.getElementById('resetBtn');
+const kickBtn = document.getElementById('kickBtn');
+const valueSpans = {
+  stiffness: document.getElementById('stiffnessValue'),
+  damping: document.getElementById('dampingValue'),
+  spacing: document.getElementById('spacingValue'),
+  pulse: document.getElementById('pulseValue')
+};
+
+let width = 0;
+let height = 0;
+let dpr = 1;
+let nodes = [];
+let springs = [];
+let lastTime = performance.now();
+const pointer = { x: 0, y: 0, down: false, node: null, lastX: 0, lastY: 0 };
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  buildNetwork();
+}
+
+function createNode(x, y) {
+  return { x, y, vx: 0, vy: 0, pinned: false };
+}
+
+function connect(a, b) {
+  springs.push({ a, b, rest: Math.hypot(a.x - b.x, a.y - b.y) });
+}
+
+function buildNetwork() {
+  nodes = [];
+  springs = [];
+  const spacing = Number(spacingInput.value);
+  const cols = Math.max(7, Math.floor(width / spacing));
+  const rows = Math.max(6, Math.floor(height / spacing));
+  const startX = (width - (cols - 1) * spacing) * 0.5;
+  const startY = (height - (rows - 1) * spacing) * 0.5;
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const jitter = y > 0 && y < rows - 1 && x > 0 && x < cols - 1 ? spacing * 0.18 : 0;
+      nodes.push(createNode(
+        startX + x * spacing + (Math.random() - 0.5) * jitter,
+        startY + y * spacing + (Math.random() - 0.5) * jitter
+      ));
+    }
+  }
+
+  const nodeAt = (x, y) => nodes[y * cols + x];
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      if (x < cols - 1) connect(nodeAt(x, y), nodeAt(x + 1, y));
+      if (y < rows - 1) connect(nodeAt(x, y), nodeAt(x, y + 1));
+      if (x < cols - 1 && y < rows - 1) connect(nodeAt(x, y), nodeAt(x + 1, y + 1));
+      if (x > 0 && y < rows - 1) connect(nodeAt(x, y), nodeAt(x - 1, y + 1));
+    }
+  }
+  nodesLabel.textContent = String(nodes.length);
+  springsLabel.textContent = String(springs.length);
+}
+
+function pulse() {
+  const amount = Number(pulseInput.value) * 120;
+  const cx = width * 0.5;
+  const cy = height * 0.5;
+  for (const node of nodes) {
+    const dx = node.x - cx;
+    const dy = node.y - cy;
+    const dist = Math.hypot(dx, dy) || 1;
+    node.vx += (dx / dist) * amount / Math.max(80, dist);
+    node.vy += (dy / dist) * amount / Math.max(80, dist);
+  }
+}
+
+function nearestNode(x, y) {
+  let best = null;
+  let bestDist = 26;
+  for (const node of nodes) {
+    const dist = Math.hypot(node.x - x, node.y - y);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = node;
+    }
+  }
+  return best;
+}
+
+function simulate(dt, now) {
+  const damping = Number(dampingInput.value);
+  const stiffness = Number(stiffnessInput.value);
+  const pulse = Number(pulseInput.value);
+
+  for (const node of nodes) {
+    if (node === pointer.node) continue;
+    node.vx *= damping;
+    node.vy *= damping;
+    node.vy += Math.sin(now * 0.0014 + node.x * 0.01) * 0.005 * pulse;
+    node.x += node.vx * dt * 60;
+    node.y += node.vy * dt * 60;
+  }
+
+  for (let k = 0; k < 3; k++) {
+    for (const spring of springs) {
+      const dx = spring.b.x - spring.a.x;
+      const dy = spring.b.y - spring.a.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const diff = (dist - spring.rest) / dist;
+      const force = diff * stiffness;
+      const offsetX = dx * force * 0.5;
+      const offsetY = dy * force * 0.5;
+      if (spring.a !== pointer.node) {
+        spring.a.x += offsetX;
+        spring.a.y += offsetY;
+      }
+      if (spring.b !== pointer.node) {
+        spring.b.x -= offsetX;
+        spring.b.y -= offsetY;
+      }
+      if (spring.a !== pointer.node) {
+        spring.a.vx += offsetX * 0.04;
+        spring.a.vy += offsetY * 0.04;
+      }
+      if (spring.b !== pointer.node) {
+        spring.b.vx -= offsetX * 0.04;
+        spring.b.vy -= offsetY * 0.04;
+      }
+    }
+  }
+
+  if (pointer.down && pointer.node) {
+    const dx = pointer.x - pointer.lastX;
+    const dy = pointer.y - pointer.lastY;
+    pointer.node.x = pointer.x;
+    pointer.node.y = pointer.y;
+    pointer.node.vx = dx * 0.7;
+    pointer.node.vy = dy * 0.7;
+  }
+}
+
+function draw(now) {
+  ctx.fillStyle = 'rgba(2, 4, 10, 0.18)';
+  ctx.fillRect(0, 0, width, height);
+
+  const gradient = ctx.createRadialGradient(width * 0.5, height * 0.52, 0, width * 0.5, height * 0.52, Math.max(width, height) * 0.45);
+  gradient.addColorStop(0, 'rgba(37, 99, 235, 0.05)');
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  for (const spring of springs) {
+    const stretch = Math.abs(Math.hypot(spring.b.x - spring.a.x, spring.b.y - spring.a.y) - spring.rest) / Math.max(1, spring.rest);
+    ctx.strokeStyle = `rgba(${120 + stretch * 120}, ${180 + stretch * 50}, 255, ${0.14 + stretch * 0.25})`;
+    ctx.lineWidth = 1 + stretch * 2;
+    ctx.beginPath();
+    ctx.moveTo(spring.a.x, spring.a.y);
+    ctx.lineTo(spring.b.x, spring.b.y);
+    ctx.stroke();
+  }
+
+  for (const node of nodes) {
+    const radius = node === pointer.node ? 6.5 : 4.2;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = node === pointer.node ? 'rgba(248, 250, 252, 0.95)' : `hsla(${190 + Math.sin(now * 0.001 + node.x * 0.01) * 40}, 100%, 68%, 0.9)`;
+    ctx.shadowBlur = node === pointer.node ? 20 : 10;
+    ctx.shadowColor = node === pointer.node ? 'rgba(255,255,255,0.7)' : 'rgba(96, 165, 250, 0.5)';
+    ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+}
+
+function frame(now) {
+  const dt = Math.min(0.033, (now - lastTime) / 1000);
+  lastTime = now;
+  simulate(dt, now);
+  draw(now);
+  requestAnimationFrame(frame);
+}
+
+function setPointer(event) {
+  const rect = canvas.getBoundingClientRect();
+  pointer.lastX = pointer.x;
+  pointer.lastY = pointer.y;
+  pointer.x = event.clientX - rect.left;
+  pointer.y = event.clientY - rect.top;
+}
+
+canvas.addEventListener('pointerdown', (event) => {
+  setPointer(event);
+  pointer.down = true;
+  pointer.node = nearestNode(pointer.x, pointer.y);
+  dragLabel.textContent = pointer.node ? 'dragging' : 'idle';
+  canvas.classList.toggle('dragging', Boolean(pointer.node));
+});
+canvas.addEventListener('pointermove', setPointer);
+canvas.addEventListener('pointerup', () => {
+  pointer.down = false;
+  pointer.node = null;
+  dragLabel.textContent = 'idle';
+  canvas.classList.remove('dragging');
+});
+canvas.addEventListener('pointerleave', () => {
+  pointer.down = false;
+  pointer.node = null;
+  dragLabel.textContent = 'idle';
+  canvas.classList.remove('dragging');
+});
+
+resetBtn.addEventListener('click', buildNetwork);
+kickBtn.addEventListener('click', pulse);
+for (const input of [stiffnessInput, dampingInput, spacingInput, pulseInput]) {
+  input.addEventListener('input', () => {
+    valueSpans[input.id].textContent = Number(input.value).toFixed(input === spacingInput ? 0 : 3).replace(/\.000$/, '');
+    if (input === spacingInput) buildNetwork();
+  });
+  valueSpans[input.id].textContent = Number(input.value).toFixed(input === spacingInput ? 0 : 3).replace(/\.000$/, '');
+}
+window.addEventListener('resize', resize);
+
+resize();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
