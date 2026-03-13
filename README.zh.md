@@ -34,6 +34,23 @@
 | [010](demos/010-physics-balls.html) | 物理弹球 | Canvas 2D，Verlet 积分 |
 | [011](demos/011-card-flip-gallery.html) | CSS 3D 翻转卡片 | CSS 3D 变换 |
 | [012](demos/012-generative-typography.html) | 生成艺术文字 | Canvas 2D，文字粒子场 |
+| [013](demos/013-game-of-life.html) | 生命游戏 | Canvas 2D，细胞自动机 |
+| [014](demos/014-maze-generator.html) | 迷宫生成器 | Canvas 2D，递归回溯 |
+| [015](demos/015-water-ripple.html) | 水波纹 | Canvas 2D，波动模拟 |
+| [016](demos/016-star-field.html) | 星空场 | Canvas 2D，视差深度 |
+| [017](demos/017-neural-network.html) | 神经网络 | Canvas 2D，激活可视化 |
+| [018](demos/018-cloth-simulation.html) | 布料模拟 | Canvas 2D，Verlet 约束 |
+| [019](demos/019-svg-clock.html) | 艺术 SVG 时钟 | SVG，生成式模式 |
+| [020](demos/020-smoke-simulation.html) | 烟雾模拟 | Canvas 2D，平流扩散 |
+| [021](demos/021-fourier-epicycles.html) | 傅里叶本轮 | Canvas 2D，DFT 重建 |
+| [022](demos/022-reaction-diffusion.html) | 反应扩散 | Canvas 2D，Gray-Scott 模型 |
+| [023](demos/023-boids-flocking.html) | 群集行为 | Canvas 2D，涌现行为 |
+| [024](demos/024-lorenz-attractor.html) | 洛伦兹吸引子 | Canvas 2D，3D 混沌投影 |
+| [025](demos/025-spring-network.html) | 弹簧网络 | Canvas 2D，弹性网格 |
+| [026](demos/026-brownian-motion.html) | 布朗运动 | Canvas 2D，随机游走热图 |
+| [027](demos/027-bezier-curve-editor.html) | 贝塞尔曲线编辑器 | Canvas 2D，de Casteljau |
+| [028](demos/028-sand-simulation.html) | 沙粒模拟 | Canvas 2D，落沙游戏 |
+| [029](demos/029-metaballs.html) | 元球 | WebGL，隐式曲面 |
 
 *每 2 天更新 →*
 

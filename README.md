@@ -34,6 +34,23 @@
 | [010](demos/010-physics-balls.html) | Physics Bouncing Balls | Canvas 2D, Verlet integration |
 | [011](demos/011-card-flip-gallery.html) | CSS 3D Card Flip | CSS 3D transforms |
 | [012](demos/012-generative-typography.html) | Generative Typography | Canvas 2D, text as particles |
+| [013](demos/013-game-of-life.html) | Game of Life | Canvas 2D, cellular automata |
+| [014](demos/014-maze-generator.html) | Maze Generator | Canvas 2D, recursive backtracking |
+| [015](demos/015-water-ripple.html) | Water Ripple | Canvas 2D, wave simulation |
+| [016](demos/016-star-field.html) | Star Field | Canvas 2D, parallax depth |
+| [017](demos/017-neural-network.html) | Neural Network | Canvas 2D, activation visualizer |
+| [018](demos/018-cloth-simulation.html) | Cloth Simulation | Canvas 2D, Verlet constraints |
+| [019](demos/019-svg-clock.html) | Artistic SVG Clock | SVG, generative modes |
+| [020](demos/020-smoke-simulation.html) | Smoke Simulation | Canvas 2D, advection diffusion |
+| [021](demos/021-fourier-epicycles.html) | Fourier Epicycles | Canvas 2D, DFT reconstruction |
+| [022](demos/022-reaction-diffusion.html) | Reaction Diffusion | Canvas 2D, Gray-Scott model |
+| [023](demos/023-boids-flocking.html) | Boids Flocking | Canvas 2D, emergent behavior |
+| [024](demos/024-lorenz-attractor.html) | Lorenz Attractor | Canvas 2D, 3D chaos projection |
+| [025](demos/025-spring-network.html) | Spring Network | Canvas 2D, elastic mesh |
+| [026](demos/026-brownian-motion.html) | Brownian Motion | Canvas 2D, random walk heat map |
+| [027](demos/027-bezier-curve-editor.html) | Bezier Curve Editor | Canvas 2D, de Casteljau |
+| [028](demos/028-sand-simulation.html) | Sand Simulation | Canvas 2D, falling sand |
+| [029](demos/029-metaballs.html) | Metaballs | WebGL, implicit surfaces |
 
 *More coming every 2 days →*
 
