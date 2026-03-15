@@ -32,7 +32,7 @@
 - [x] 027 Bezier Curve Editor (interactive control points, cubic/quadratic)
 - [x] 028 Sand Simulation (cellular automaton, falling sand)
 - [x] 029 Metaballs (organic blobs, marching squares)
-- [ ] 030 Fireworks (particle explosions, gravity, trails)
+- [x] 030 Fireworks (particle explosions, gravity, trails)
 - [ ] 031 Lightning Generator (recursive branching, glow effects)
 - [ ] 032 Kaleidoscope (webcam/image input, radial symmetry)
 - [ ] 033 Pendulum Wave (phase sync, mesmerizing patterns)

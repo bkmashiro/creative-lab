@@ -51,6 +51,7 @@
 | [027](demos/027-bezier-curve-editor.html) | 贝塞尔曲线编辑器 | Canvas 2D，de Casteljau |
 | [028](demos/028-sand-simulation.html) | 沙粒模拟 | Canvas 2D，落沙游戏 |
 | [029](demos/029-metaballs.html) | 元球 | WebGL，隐式曲面 |
+| [030](demos/030-fireworks.html) | 烟花 | Canvas 2D，粒子物理 |
 
 *每 2 天更新 →*
 
