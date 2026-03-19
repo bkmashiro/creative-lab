@@ -33,7 +33,7 @@
 - [x] 028 Sand Simulation (cellular automaton, falling sand)
 - [x] 029 Metaballs (organic blobs, marching squares)
 - [x] 030 Fireworks (particle explosions, gravity, trails)
-- [ ] 031 Lightning Generator (recursive branching, glow effects)
+- [x] 031 Lightning Generator (recursive branching, glow effects)
 - [ ] 032 Kaleidoscope (webcam/image input, radial symmetry)
 - [ ] 033 Pendulum Wave (phase sync, mesmerizing patterns)
 - [ ] 034 Double Pendulum (chaotic motion, trail rendering)

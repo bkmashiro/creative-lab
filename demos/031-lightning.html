@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lightning Generator — creative-lab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #000;
+      overflow: hidden;
+      width: 100vw; height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      user-select: none;
+    }
+    canvas { position: absolute; top: 0; left: 0; }
+    #bg { z-index: 0; }
+    #glow { z-index: 1; }
+    #main { z-index: 2; }
+    #ui {
+      position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%);
+      z-index: 10;
+      display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center;
+    }
+    .ctrl {
+      background: rgba(0,0,40,0.7); border: 1px solid rgba(100,140,255,0.3);
+      border-radius: 8px; padding: 6px 14px; color: #a0b8ff; font-size: 0.78rem;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .ctrl label { white-space: nowrap; }
+    .ctrl input[type=range] { width: 80px; accent-color: #6699ff; cursor: pointer; }
+    .hint {
+      position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+      z-index: 10; color: rgba(140,170,255,0.5); font-size: 0.8rem;
+      pointer-events: none; text-align: center;
+    }
+    footer {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+      padding: 10px 20px; text-align: center;
+      font-size: 0.72rem; color: rgba(120,150,255,0.4);
+      background: rgba(0,0,10,0.6);
+    }
+    footer a { color: inherit; text-decoration: none; }
+    footer a:hover { color: rgba(140,180,255,0.8); }
+  </style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<canvas id="glow"></canvas>
+<canvas id="main"></canvas>
+
+<div class="hint">Click / tap to strike · or wait for auto-storm</div>
+
+<div id="ui">
+  <div class="ctrl">
+    <label>Branches</label>
+    <input type="range" id="sldBranch" min="1" max="6" step="1" value="4">
+    <span id="valBranch">4</span>
+  </div>
+  <div class="ctrl">
+    <label>Jaggedness</label>
+    <input type="range" id="sldJag" min="10" max="120" step="5" value="55">
+    <span id="valJag">55</span>
+  </div>
+  <div class="ctrl">
+    <label>Glow</label>
+    <input type="range" id="sldGlow" min="5" max="60" step="5" value="30">
+    <span id="valGlow">30</span>
+  </div>
+  <div class="ctrl">
+    <label>Speed</label>
+    <input type="range" id="sldSpeed" min="1" max="5" step="1" value="3">
+    <span id="valSpeed">3</span>
+  </div>
+</div>
+
+<footer>
+  <a href="https://github.com/bkmashiro/creative-lab" target="_blank">bkmashiro/creative-lab</a> ·
+  <a href="https://cl.yuzhes.com">cl.yuzhes.com</a>
+</footer>
+
+<script>
+const bgC   = document.getElementById('bg');
+const glowC = document.getElementById('glow');
+const mainC = document.getElementById('main');
+const bgX   = bgC.getContext('2d');
+const glowX = glowC.getContext('2d');
+const ctx   = mainC.getContext('2d');
+
+let W, H;
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  [bgC, glowC, mainC].forEach(c => { c.width = W; c.height = H; });
+  drawBackground();
+}
+window.addEventListener('resize', resize);
+
+/* ── Parameters ───────────────────────────────────────────────── */
+let MAX_BRANCHES = 4;
+let JAGGEDNESS   = 55;
+let GLOW_BLUR    = 30;
+let STRIKE_SPEED = 3;   // strikes per auto-burst
+
+/* ── Sliders ──────────────────────────────────────────────────── */
+function bindSlider(id, valId, cb) {
+  const s = document.getElementById(id), v = document.getElementById(valId);
+  v.textContent = s.value;
+  s.addEventListener('input', () => { v.textContent = s.value; cb(+s.value); });
+}
+bindSlider('sldBranch', 'valBranch', v => MAX_BRANCHES = v);
+bindSlider('sldJag',    'valJag',    v => JAGGEDNESS   = v);
+bindSlider('sldGlow',   'valGlow',   v => GLOW_BLUR    = v);
+bindSlider('sldSpeed',  'valSpeed',  v => STRIKE_SPEED = v);
+
+/* ── Background: stormy sky ───────────────────────────────────── */
+function drawBackground() {
+  const g = bgX.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0,   '#020510');
+  g.addColorStop(0.5, '#050a1a');
+  g.addColorStop(1,   '#080412');
+  bgX.fillStyle = g;
+  bgX.fillRect(0, 0, W, H);
+
+  // distant cloud silhouettes
+  bgX.fillStyle = 'rgba(10,12,30,0.8)';
+  for (let i = 0; i < 8; i++) {
+    const cx = (i / 7) * W * 1.2 - W * 0.1;
+    const cy = H * 0.05 + Math.sin(i * 1.3) * H * 0.04;
+    const rx = 80 + Math.sin(i * 2.7) * 60;
+    const ry = 30 + Math.cos(i * 1.1) * 15;
+    bgX.beginPath();
+    bgX.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    bgX.fill();
+  }
+}
+
+/* ── Lightning bolt data structure ───────────────────────────── */
+class Segment {
+  constructor(x1, y1, x2, y2, width, alpha) {
+    this.x1 = x1; this.y1 = y1;
+    this.x2 = x2; this.y2 = y2;
+    this.width = width;
+    this.alpha = alpha;
+  }
+}
+
+/* Recursive midpoint displacement */
+function buildBolt(x1, y1, x2, y2, disp, depth, maxDepth, segs, branchProb, branchCount) {
+  if (depth >= maxDepth || disp < 1) {
+    segs.push(new Segment(x1, y1, x2, y2,
+      Math.max(0.3, 2.5 * (1 - depth / maxDepth)),
+      1.0 - depth * 0.12
+    ));
+    return;
+  }
+  const mx = (x1 + x2) / 2 + (Math.random() - 0.5) * disp;
+  const my = (y1 + y2) / 2 + (Math.random() - 0.4) * disp * 0.3;
+  buildBolt(x1, y1, mx, my, disp * 0.6, depth + 1, maxDepth, segs, branchProb, branchCount);
+  buildBolt(mx, my, x2, y2, disp * 0.6, depth + 1, maxDepth, segs, branchProb, branchCount);
+
+  // spawn branch at mid point
+  if (branchCount[0] < MAX_BRANCHES && Math.random() < branchProb) {
+    branchCount[0]++;
+    const angle = (Math.random() - 0.5) * 0.9;
+    const len   = Math.hypot(x2 - x1, y2 - y1) * (0.3 + Math.random() * 0.4);
+    const dx = (x2 - x1), dy = (y2 - y1);
+    const bx = mx + (Math.cos(angle) * dx - Math.sin(angle) * dy) / Math.hypot(dx, dy) * len;
+    const by = my + (Math.sin(angle) * dx + Math.cos(angle) * dy) / Math.hypot(dx, dy) * len;
+    const branchSegs = [];
+    buildBolt(mx, my, bx, by, disp * 0.45, depth + 2, maxDepth, branchSegs, branchProb * 0.4, branchCount);
+    // dim branches
+    branchSegs.forEach(s => { s.alpha *= 0.55; s.width *= 0.55; });
+    branchSegs.forEach(s => segs.push(s));
+  }
+}
+
+function createLightning(tx, ty) {
+  const ox = W * 0.2 + Math.random() * W * 0.6; // origin along top
+  const oy = 0;
+  const segs = [];
+  const disp = JAGGEDNESS + Math.random() * 20;
+  buildBolt(ox, oy, tx, ty, disp, 0, 9, segs, 0.5, [0]);
+  return { segs, ox, oy, tx, ty, age: 0, maxAge: 18 + Math.random() * 14 };
+}
+
+/* ── Active bolts & flash ──────────────────────────────────────── */
+const bolts = [];
+let flashAlpha = 0;
+
+function strikeBurst(tx, ty, count) {
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => {
+      bolts.push(createLightning(
+        tx + (Math.random() - 0.5) * 60,
+        ty + (Math.random() - 0.5) * 60
+      ));
+      flashAlpha = Math.min(1, flashAlpha + 0.35);
+    }, i * 60);
+  }
+}
+
+/* ── Interaction ──────────────────────────────────────────────── */
+mainC.addEventListener('click', e => {
+  strikeBurst(e.clientX, e.clientY, STRIKE_SPEED);
+});
+mainC.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  strikeBurst(t.clientX, t.clientY, STRIKE_SPEED);
+}, { passive: false });
+
+/* ── Auto-storm ──────────────────────────────────────────────── */
+function autoStrike() {
+  const tx = W * 0.1 + Math.random() * W * 0.8;
+  const ty = H * 0.55 + Math.random() * H * 0.35;
+  strikeBurst(tx, ty, 1 + Math.floor(Math.random() * STRIKE_SPEED));
+  const next = 800 + Math.random() * 3200;
+  setTimeout(autoStrike, next);
+}
+setTimeout(autoStrike, 600);
+
+/* ── Draw bolt segments ───────────────────────────────────────── */
+function drawBolt(bolt, lifeFrac) {
+  const fade = lifeFrac < 0.3 ? lifeFrac / 0.3 : 1 - (lifeFrac - 0.3) / 0.7;
+  bolt.segs.forEach(seg => {
+    const a = seg.alpha * fade;
+    if (a < 0.01) return;
+
+    // glow pass
+    glowX.save();
+    glowX.globalAlpha = a * 0.6;
+    glowX.shadowBlur  = GLOW_BLUR;
+    glowX.shadowColor = '#88aaff';
+    glowX.strokeStyle = 'rgba(120,170,255,0.4)';
+    glowX.lineWidth   = seg.width * 4;
+    glowX.lineCap = 'round';
+    glowX.beginPath();
+    glowX.moveTo(seg.x1, seg.y1); glowX.lineTo(seg.x2, seg.y2);
+    glowX.stroke();
+    glowX.restore();
+
+    // core pass
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.shadowBlur  = GLOW_BLUR * 0.5;
+    ctx.shadowColor = '#ccddff';
+    // white core
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth   = seg.width;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(seg.x1, seg.y1); ctx.lineTo(seg.x2, seg.y2);
+    ctx.stroke();
+    // electric blue layer
+    ctx.strokeStyle = '#88aaff';
+    ctx.lineWidth   = seg.width * 2;
+    ctx.globalAlpha = a * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(seg.x1, seg.y1); ctx.lineTo(seg.x2, seg.y2);
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
+/* ── Ambient crackling particles ─────────────────────────────── */
+const sparks = [];
+function spawnSparks(x, y, n) {
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1 + Math.random() * 3;
+    sparks.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1,
+      life: 0.7 + Math.random() * 0.8,
+      age: 0
+    });
+  }
+}
+function updateSparks(dt) {
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const s = sparks[i];
+    s.age += dt; s.x += s.vx; s.y += s.vy; s.vy += 0.05;
+    if (s.age >= s.life) sparks.splice(i, 1);
+  }
+}
+function drawSparks() {
+  sparks.forEach(s => {
+    const f = 1 - s.age / s.life;
+    ctx.save();
+    ctx.globalAlpha = f * 0.9;
+    ctx.fillStyle = `hsl(${200 + Math.random() * 40}, 100%, ${80 + f * 20}%)`;
+    ctx.shadowBlur = 6; ctx.shadowColor = '#aaccff';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 1.2 * f, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+/* ── Rain ────────────────────────────────────────────────────── */
+const RAIN_COUNT = 180;
+const rain = Array.from({ length: RAIN_COUNT }, () => ({
+  x: Math.random() * 1.2 - 0.1,
+  y: Math.random(),
+  speed: 0.004 + Math.random() * 0.006,
+  len: 0.012 + Math.random() * 0.02,
+  alpha: 0.05 + Math.random() * 0.12
+}));
+function drawRain() {
+  ctx.save();
+  rain.forEach(r => {
+    const x = r.x * W, y = r.y * H;
+    ctx.strokeStyle = `rgba(140,170,220,${r.alpha})`;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - r.len * H * 0.07, y + r.len * H);
+    ctx.stroke();
+    r.y += r.speed;
+    if (r.y > 1.05) { r.y = -0.05; r.x = Math.random() * 1.2 - 0.1; }
+  });
+  ctx.restore();
+}
+
+/* ── Main loop ───────────────────────────────────────────────── */
+let last = 0;
+function loop(ts) {
+  const dt = Math.min((ts - last) / 16.67, 3);
+  last = ts;
+  requestAnimationFrame(loop);
+
+  // clear layers
+  ctx.clearRect(0, 0, W, H);
+  glowX.clearRect(0, 0, W, H);
+
+  // ambient flash
+  if (flashAlpha > 0) {
+    ctx.save();
+    ctx.fillStyle = `rgba(140,160,255,${flashAlpha * 0.18})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    flashAlpha = Math.max(0, flashAlpha - 0.04 * dt);
+  }
+
+  drawRain();
+
+  // update + draw bolts
+  for (let i = bolts.length - 1; i >= 0; i--) {
+    const b = bolts[i];
+    b.age += dt;
+    const lifeFrac = b.age / b.maxAge;
+    if (lifeFrac >= 1) {
+      bolts.splice(i, 1);
+      continue;
+    }
+    drawBolt(b, lifeFrac);
+    // spawn sparks near terminus
+    if (Math.random() < 0.12 * dt) {
+      spawnSparks(b.tx + (Math.random()-0.5)*20, b.ty + (Math.random()-0.5)*10, 3);
+    }
+  }
+
+  updateSparks(dt);
+  drawSparks();
+}
+
+resize();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

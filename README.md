@@ -52,6 +52,7 @@
 | [028](demos/028-sand-simulation.html) | Sand Simulation | Canvas 2D, falling sand |
 | [029](demos/029-metaballs.html) | Metaballs | WebGL, implicit surfaces |
 | [030](demos/030-fireworks.html) | Fireworks | Canvas 2D, particle physics |
+| [031](demos/031-lightning.html) | Lightning Generator | Canvas 2D, recursive branching, glow |
 
 *More coming every 2 days →*
 
