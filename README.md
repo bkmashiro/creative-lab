@@ -53,6 +53,7 @@
 | [029](demos/029-metaballs.html) | Metaballs | WebGL, implicit surfaces |
 | [030](demos/030-fireworks.html) | Fireworks | Canvas 2D, particle physics |
 | [031](demos/031-lightning.html) | Lightning Generator | Canvas 2D, recursive branching, glow |
+| [032](demos/032-kaleidoscope.html) | Kaleidoscope | Canvas 2D, radial symmetry, webcam |
 
 *More coming every 2 days →*
 

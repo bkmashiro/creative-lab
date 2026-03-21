@@ -34,7 +34,7 @@
 - [x] 029 Metaballs (organic blobs, marching squares)
 - [x] 030 Fireworks (particle explosions, gravity, trails)
 - [x] 031 Lightning Generator (recursive branching, glow effects)
-- [ ] 032 Kaleidoscope (webcam/image input, radial symmetry)
+- [x] 032 Kaleidoscope (webcam/image input, radial symmetry)
 - [ ] 033 Pendulum Wave (phase sync, mesmerizing patterns)
 - [ ] 034 Double Pendulum (chaotic motion, trail rendering)
 - [ ] 035 Wave Interference (superposition, slit experiment)
