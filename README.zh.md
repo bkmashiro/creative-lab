@@ -54,6 +54,7 @@
 | [030](demos/030-fireworks.html) | 烟花 | Canvas 2D，粒子物理 |
 | [031](demos/031-lightning.html) | 闪电生成器 | Canvas 2D，递归分支，辉光效果 |
 | [032](demos/032-kaleidoscope.html) | 万花筒 | Canvas 2D，径向对称，支持摄像头 |
+| [033](demos/033-pendulum-wave.html) | 摆波 | Canvas 2D，相位同步 |
 
 *每 2 天更新 →*
 

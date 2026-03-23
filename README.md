@@ -54,6 +54,7 @@
 | [030](demos/030-fireworks.html) | Fireworks | Canvas 2D, particle physics |
 | [031](demos/031-lightning.html) | Lightning Generator | Canvas 2D, recursive branching, glow |
 | [032](demos/032-kaleidoscope.html) | Kaleidoscope | Canvas 2D, radial symmetry, webcam |
+| [033](demos/033-pendulum-wave.html) | Pendulum Wave | Canvas 2D, phase synchronization |
 
 *More coming every 2 days →*
 
