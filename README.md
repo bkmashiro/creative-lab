@@ -56,6 +56,7 @@
 | [032](demos/032-kaleidoscope.html) | Kaleidoscope | Canvas 2D, radial symmetry, webcam |
 | [033](demos/033-pendulum-wave.html) | Pendulum Wave | Canvas 2D, phase synchronization |
 | [034](demos/034-double-pendulum.html) | Double Pendulum | Canvas 2D, RK4 chaos, trail rendering |
+| [035](demos/035-wave-interference.html) | Wave Interference | Canvas 2D, superposition, double-slit |
 
 *More coming every 2 days →*
 

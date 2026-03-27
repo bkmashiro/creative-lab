@@ -56,6 +56,7 @@
 | [032](demos/032-kaleidoscope.html) | 万花筒 | Canvas 2D，径向对称，支持摄像头 |
 | [033](demos/033-pendulum-wave.html) | 摆波 | Canvas 2D，相位同步 |
 | [034](demos/034-double-pendulum.html) | 双摆 | Canvas 2D，RK4 混沌积分，轨迹渲染 |
+| [035](demos/035-wave-interference.html) | 波的干涉 | Canvas 2D，叠加原理，双缝实验 |
 
 *每 2 天更新 →*
 
