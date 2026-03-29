@@ -57,6 +57,7 @@
 | [033](demos/033-pendulum-wave.html) | Pendulum Wave | Canvas 2D, phase synchronization |
 | [034](demos/034-double-pendulum.html) | Double Pendulum | Canvas 2D, RK4 chaos, trail rendering |
 | [035](demos/035-wave-interference.html) | Wave Interference | Canvas 2D, superposition, double-slit |
+| [036](demos/036-plasma-effect.html) | Plasma Effect | WebGL, GLSL, demoscene, color cycling |
 
 *More coming every 2 days →*
 

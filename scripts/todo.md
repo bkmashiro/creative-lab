@@ -38,6 +38,6 @@
 - [x] 033 Pendulum Wave (phase sync, mesmerizing patterns)
 - [x] 034 Double Pendulum (chaotic motion, trail rendering)
 - [x] 035 Wave Interference (superposition, slit experiment)
-- [ ] 036 Plasma Effect (classic demo scene, color cycling)
+- [x] 036 Plasma Effect (classic demo scene, color cycling)
 - [ ] 037 Galaxy Spiral (star distribution, rotation curves)
 - [ ] 038 Magnetic Field Lines (dipoles, vector field)

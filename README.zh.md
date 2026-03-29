@@ -57,6 +57,7 @@
 | [033](demos/033-pendulum-wave.html) | 摆波 | Canvas 2D，相位同步 |
 | [034](demos/034-double-pendulum.html) | 双摆 | Canvas 2D，RK4 混沌积分，轨迹渲染 |
 | [035](demos/035-wave-interference.html) | 波的干涉 | Canvas 2D，叠加原理，双缝实验 |
+| [036](demos/036-plasma-effect.html) | 等离子体效果 | WebGL，GLSL，Demo场景，颜色循环 |
 
 *每 2 天更新 →*
 
