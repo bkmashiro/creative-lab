@@ -58,6 +58,7 @@
 | [034](demos/034-double-pendulum.html) | Double Pendulum | Canvas 2D, RK4 chaos, trail rendering |
 | [035](demos/035-wave-interference.html) | Wave Interference | Canvas 2D, superposition, double-slit |
 | [036](demos/036-plasma-effect.html) | Plasma Effect | WebGL, GLSL, demoscene, color cycling |
+| [037](demos/037-galaxy-spiral.html) | Galaxy Spiral | Canvas 2D, logarithmic spiral, rotation curves |
 
 *More coming every 2 days →*
 

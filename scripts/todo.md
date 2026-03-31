@@ -39,5 +39,5 @@
 - [x] 034 Double Pendulum (chaotic motion, trail rendering)
 - [x] 035 Wave Interference (superposition, slit experiment)
 - [x] 036 Plasma Effect (classic demo scene, color cycling)
-- [ ] 037 Galaxy Spiral (star distribution, rotation curves)
+- [x] 037 Galaxy Spiral (star distribution, rotation curves)
 - [ ] 038 Magnetic Field Lines (dipoles, vector field)
