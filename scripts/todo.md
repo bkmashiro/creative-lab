@@ -40,4 +40,4 @@
 - [x] 035 Wave Interference (superposition, slit experiment)
 - [x] 036 Plasma Effect (classic demo scene, color cycling)
 - [x] 037 Galaxy Spiral (star distribution, rotation curves)
-- [ ] 038 Magnetic Field Lines (dipoles, vector field)
+- [x] 038 Magnetic Field Lines (dipoles, vector field)

@@ -59,6 +59,7 @@
 | [035](demos/035-wave-interference.html) | 波的干涉 | Canvas 2D，叠加原理，双缝实验 |
 | [036](demos/036-plasma-effect.html) | 等离子体效果 | WebGL，GLSL，Demo场景，颜色循环 |
 | [037](demos/037-galaxy-spiral.html) | 星系螺旋 | Canvas 2D，对数螺旋线，旋转曲线 |
+| [038](demos/038-magnetic-field-lines.html) | 磁场线 | Canvas 2D，RK4 场线追踪，矢量场 |
 
 *每 2 天更新 →*
 

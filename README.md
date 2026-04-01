@@ -59,6 +59,7 @@
 | [035](demos/035-wave-interference.html) | Wave Interference | Canvas 2D, superposition, double-slit |
 | [036](demos/036-plasma-effect.html) | Plasma Effect | WebGL, GLSL, demoscene, color cycling |
 | [037](demos/037-galaxy-spiral.html) | Galaxy Spiral | Canvas 2D, logarithmic spiral, rotation curves |
+| [038](demos/038-magnetic-field-lines.html) | Magnetic Field Lines | Canvas 2D, RK4 field line tracing, vector field |
 
 *More coming every 2 days →*
 

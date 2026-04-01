@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>038 — Magnetic Field Lines</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #050810;
+      color: #e0e8ff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    canvas {
+      flex: 1;
+      cursor: crosshair;
+      display: block;
+    }
+
+    #ui {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .pill {
+      background: rgba(8, 16, 40, 0.82);
+      border: 1px solid rgba(100, 160, 255, 0.25);
+      backdrop-filter: blur(8px);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: #8baee0;
+      pointer-events: auto;
+      user-select: none;
+    }
+
+    .pill b { color: #a8c4ff; }
+
+    #controls {
+      position: absolute;
+      bottom: 52px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    button {
+      background: rgba(8, 16, 40, 0.82);
+      border: 1px solid rgba(100, 160, 255, 0.35);
+      color: #a8c4ff;
+      padding: 7px 14px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    button:hover, button.active {
+      background: rgba(88, 140, 255, 0.22);
+      border-color: #58a6ff;
+      color: #d0e4ff;
+    }
+
+    #mode-label {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(8, 16, 40, 0.82);
+      border: 1px solid rgba(100, 160, 255, 0.25);
+      backdrop-filter: blur(8px);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: #8baee0;
+    }
+
+    #mode-label span { color: #a8c4ff; font-weight: 600; }
+
+    footer {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      text-align: center;
+      padding: 8px;
+      font-size: 0.7rem;
+      color: rgba(140, 160, 200, 0.45);
+      pointer-events: none;
+    }
+
+    footer a { color: inherit; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <div class="pill"><b>Left-click</b> — add + pole (red)</div>
+  <div class="pill"><b>Right-click</b> — add − pole (blue)</div>
+  <div class="pill"><b>Drag</b> — move poles</div>
+  <div class="pill"><b>Double-click</b> — remove pole</div>
+</div>
+
+<div id="mode-label">Mode: <span id="modeText">Dipoles</span></div>
+
+<div id="controls">
+  <button id="btn-clear">Clear</button>
+  <button id="btn-dipole" class="active">Dipole</button>
+  <button id="btn-mono">Single Poles</button>
+  <button id="btn-quad">Quadrupole</button>
+  <button id="btn-density">More Lines</button>
+  <button id="btn-animate">Animate Flow</button>
+  <button id="btn-force">Show Force</button>
+</div>
+
+<footer>
+  <a href="https://github.com/bkmashiro/creative-lab" target="_blank">bkmashiro/creative-lab</a> · cl.yuzhes.com
+</footer>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// ─── State ─────────────────────────────────────────────────────────────
+let W, H;
+let poles = [];            // { x, y, charge: +1|-1 }
+let fieldLines = [];       // cached line paths for current poles config
+let particles = [];        // flow animation particles
+let flowActive = false;
+let forceActive = false;
+let lineDensity = 1;       // 1 or 2
+let dirty = true;          // rebuild field lines next frame
+let animId;
+let dragging = null;       // { pole, ox, oy }
+let lastDragMove = false;
+
+// ─── Resize ────────────────────────────────────────────────────────────
+function resize() {
+  W = canvas.width  = canvas.offsetWidth  || window.innerWidth;
+  H = canvas.height = canvas.offsetHeight || window.innerHeight;
+  dirty = true;
+}
+
+// ─── Physics ───────────────────────────────────────────────────────────
+function fieldAt(x, y) {
+  let fx = 0, fy = 0;
+  for (const p of poles) {
+    const dx = x - p.x, dy = y - p.y;
+    const r2 = dx * dx + dy * dy;
+    if (r2 < 1) continue;
+    const r  = Math.sqrt(r2);
+    const k  = p.charge / (r2 * r);   // 1/r² magnitude, unit vector /r
+    fx += k * dx;
+    fy += k * dy;
+  }
+  return { fx, fy };
+}
+
+function normalizeField(x, y) {
+  const { fx, fy } = fieldAt(x, y);
+  const mag = Math.sqrt(fx * fx + fy * fy);
+  if (mag < 1e-12) return { dx: 0, dy: 0 };
+  return { dx: fx / mag, dy: fy / mag };
+}
+
+// ─── Field Line Tracing (RK4) ───────────────────────────────────────────
+const STEP  = 4;
+const MAX_STEPS = 1800;
+const STOP_R2   = 150;   // stop near a pole
+
+function traceLine(sx, sy, sign) {
+  const pts = [{ x: sx, y: sy }];
+  let x = sx, y = sy;
+
+  for (let i = 0; i < MAX_STEPS; i++) {
+    // RK4
+    const k1 = normalizeField(x, y);
+    const k2 = normalizeField(x + 0.5 * STEP * k1.dx * sign, y + 0.5 * STEP * k1.dy * sign);
+    const k3 = normalizeField(x + 0.5 * STEP * k2.dx * sign, y + 0.5 * STEP * k2.dy * sign);
+    const k4 = normalizeField(x + STEP * k3.dx * sign, y + STEP * k3.dy * sign);
+
+    const ddx = (k1.dx + 2*k2.dx + 2*k3.dx + k4.dx) / 6;
+    const ddy = (k1.dy + 2*k2.dy + 2*k3.dy + k4.dy) / 6;
+
+    x += STEP * ddx * sign;
+    y += STEP * ddy * sign;
+
+    if (x < -20 || x > W + 20 || y < -20 || y > H + 20) break;
+
+    // stop if we landed near any pole
+    let nearPole = false;
+    for (const p of poles) {
+      const dx = x - p.x, dy = y - p.y;
+      if (dx*dx + dy*dy < STOP_R2) { nearPole = true; break; }
+    }
+
+    pts.push({ x, y });
+    if (nearPole) break;
+  }
+  return pts;
+}
+
+// ─── Build all Field Lines ──────────────────────────────────────────────
+const BASE_LINES = 18;
+
+function buildFieldLines() {
+  fieldLines = [];
+  if (poles.length === 0) return;
+
+  const N = BASE_LINES * lineDensity;
+  const angleStep = (2 * Math.PI) / N;
+
+  for (const pole of poles) {
+    if (pole.charge !== 1) continue;   // emit from + poles only
+    for (let i = 0; i < N; i++) {
+      const angle = i * angleStep;
+      const r0 = 18;
+      const sx = pole.x + r0 * Math.cos(angle);
+      const sy = pole.y + r0 * Math.sin(angle);
+      const pts = traceLine(sx, sy, 1);
+      if (pts.length > 2) fieldLines.push(pts);
+    }
+  }
+
+  // If no + poles exist, emit inward lines from − poles
+  if (fieldLines.length === 0) {
+    for (const pole of poles) {
+      for (let i = 0; i < N; i++) {
+        const angle = i * angleStep;
+        const r0 = 18;
+        const sx = pole.x + r0 * Math.cos(angle);
+        const sy = pole.y + r0 * Math.sin(angle);
+        const pts = traceLine(sx, sy, -1);
+        if (pts.length > 2) fieldLines.push(pts);
+      }
+    }
+  }
+
+  spawnFlowParticles();
+}
+
+// ─── Flow Particles ─────────────────────────────────────────────────────
+const PARTICLE_COUNT = 200;
+
+function spawnFlowParticles() {
+  particles = [];
+  if (!flowActive || fieldLines.length === 0) return;
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const lineIdx = Math.floor(Math.random() * fieldLines.length);
+    const line    = fieldLines[lineIdx];
+    const ptIdx   = Math.floor(Math.random() * line.length);
+    particles.push({
+      lineIdx,
+      t: ptIdx / line.length,
+      speed: 0.001 + Math.random() * 0.003,
+      alpha: 0.6 + Math.random() * 0.4,
+      size: 1.5 + Math.random() * 1.5,
+    });
+  }
+}
+
+function updateParticles() {
+  for (const p of particles) {
+    p.t += p.speed;
+    if (p.t >= 1) {
+      // respawn on a random line start
+      p.lineIdx = Math.floor(Math.random() * fieldLines.length);
+      p.t = 0;
+    }
+  }
+}
+
+// ─── Rendering ─────────────────────────────────────────────────────────
+const ARROW_INTERVAL = 80;  // px along line before placing arrowhead
+
+function lineColor(pts) {
+  // colour from cyan-blue → purple gradient along line length
+  return (t) => {
+    const r = Math.round(80  + t * 100);
+    const g = Math.round(160 - t * 80);
+    const b = Math.round(255);
+    return `rgb(${r},${g},${b})`;
+  };
+}
+
+function drawArrow(ctx, x, y, angle, size, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(size, 0);
+  ctx.lineTo(-size * 0.6, -size * 0.5);
+  ctx.lineTo(-size * 0.6,  size * 0.5);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.7;
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawFieldLines() {
+  for (const pts of fieldLines) {
+    if (pts.length < 2) continue;
+
+    // draw line with gradient-like stroke using multiple segments
+    let accDist = 0;
+
+    for (let i = 1; i < pts.length; i++) {
+      const t   = i / pts.length;
+      const r   = Math.round(60  + t * 120);
+      const g   = Math.round(140 - t * 60);
+      const b   = 255;
+      const col = `rgba(${r},${g},${b},0.65)`;
+
+      ctx.beginPath();
+      ctx.moveTo(pts[i-1].x, pts[i-1].y);
+      ctx.lineTo(pts[i].x,   pts[i].y);
+      ctx.strokeStyle = col;
+      ctx.lineWidth   = 1.2;
+      ctx.stroke();
+
+      // arrowheads
+      const dx = pts[i].x - pts[i-1].x;
+      const dy = pts[i].y - pts[i-1].y;
+      accDist += Math.sqrt(dx*dx + dy*dy);
+      if (accDist >= ARROW_INTERVAL) {
+        accDist = 0;
+        drawArrow(ctx, pts[i].x, pts[i].y, Math.atan2(dy, dx), 5, `rgba(${r},${g},${b},1)`);
+      }
+    }
+  }
+}
+
+function drawParticles() {
+  if (!flowActive || fieldLines.length === 0) return;
+  for (const p of particles) {
+    const line = fieldLines[p.lineIdx];
+    if (!line || line.length < 2) continue;
+
+    // interpolate position along line
+    const rawIdx = p.t * (line.length - 1);
+    const i0     = Math.floor(rawIdx);
+    const i1     = Math.min(i0 + 1, line.length - 1);
+    const frac   = rawIdx - i0;
+
+    const x = line[i0].x + frac * (line[i1].x - line[i0].x);
+    const y = line[i0].y + frac * (line[i1].y - line[i0].y);
+
+    const t = p.t;
+    const r = Math.round(120 + t * 80);
+    const g = Math.round(200 - t * 60);
+
+    ctx.beginPath();
+    ctx.arc(x, y, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${r},${g},255,${p.alpha})`;
+    ctx.fill();
+  }
+}
+
+function drawForceField() {
+  if (!forceActive) return;
+
+  const GRID = 40;
+  const cols = Math.floor(W / GRID) + 1;
+  const rows = Math.floor(H / GRID) + 1;
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = col * GRID + GRID / 2;
+      const y = row * GRID + GRID / 2;
+
+      const { fx, fy } = fieldAt(x, y);
+      const mag = Math.sqrt(fx * fx + fy * fy);
+      if (mag < 1e-8) continue;
+
+      const scale = Math.min(14, 14 * (mag / (mag + 0.5)));
+      const nx = fx / mag, ny = fy / mag;
+
+      const alpha = Math.min(0.55, mag * 0.6);
+      const hue   = 200 + (mag > 1 ? 40 : 0);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = `hsl(${hue},80%,70%)`;
+      ctx.lineWidth   = 1;
+
+      const ex = x + nx * scale, ey = y + ny * scale;
+      ctx.beginPath();
+      ctx.moveTo(x - nx * scale * 0.4, y - ny * scale * 0.4);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+
+      // tiny arrowhead
+      const ang = Math.atan2(ny, nx);
+      drawArrow(ctx, ex, ey, ang, 3.5, `hsl(${hue},80%,80%)`);
+      ctx.restore();
+    }
+  }
+}
+
+function drawPoles() {
+  for (const p of poles) {
+    const isPlus = p.charge === 1;
+
+    // glow
+    const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 28);
+    if (isPlus) {
+      grad.addColorStop(0,   'rgba(255,80,80,0.55)');
+      grad.addColorStop(0.5, 'rgba(255,40,40,0.2)');
+      grad.addColorStop(1,   'rgba(255,0,0,0)');
+    } else {
+      grad.addColorStop(0,   'rgba(60,140,255,0.55)');
+      grad.addColorStop(0.5, 'rgba(40,100,255,0.2)');
+      grad.addColorStop(1,   'rgba(0,60,255,0)');
+    }
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 28, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // core circle
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
+    ctx.fillStyle   = isPlus ? '#ff4444' : '#3388ff';
+    ctx.strokeStyle = isPlus ? '#ff9999' : '#88ccff';
+    ctx.lineWidth   = 2;
+    ctx.fill();
+    ctx.stroke();
+
+    // ± symbol
+    ctx.fillStyle   = '#fff';
+    ctx.font        = 'bold 14px monospace';
+    ctx.textAlign   = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(isPlus ? '+' : '−', p.x, p.y);
+  }
+}
+
+// ─── Main Loop ──────────────────────────────────────────────────────────
+function draw() {
+  animId = requestAnimationFrame(draw);
+
+  if (dirty) {
+    buildFieldLines();
+    dirty = false;
+  }
+
+  if (flowActive) updateParticles();
+
+  // clear
+  ctx.fillStyle = '#050810';
+  ctx.fillRect(0, 0, W, H);
+
+  if (poles.length === 0) {
+    ctx.fillStyle   = 'rgba(140,160,220,0.28)';
+    ctx.font        = '16px -apple-system, sans-serif';
+    ctx.textAlign   = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Right-click to add a + pole  ·  Left-click for − pole', W/2, H/2);
+    return;
+  }
+
+  drawForceField();
+  drawFieldLines();
+  drawParticles();
+  drawPoles();
+}
+
+// ─── Interaction ────────────────────────────────────────────────────────
+const HIT_R2 = 22 * 22;
+
+function nearestPole(x, y) {
+  let best = null, bestD2 = Infinity;
+  for (const p of poles) {
+    const d2 = (x-p.x)**2 + (y-p.y)**2;
+    if (d2 < bestD2) { bestD2 = d2; best = p; }
+  }
+  return bestD2 < HIT_R2 ? best : null;
+}
+
+canvas.addEventListener('mousedown', e => {
+  e.preventDefault();
+  const rect  = canvas.getBoundingClientRect();
+  const mx    = e.clientX - rect.left;
+  const my    = e.clientY - rect.top;
+
+  const hit = nearestPole(mx, my);
+  if (hit) {
+    dragging    = { pole: hit, ox: mx - hit.x, oy: my - hit.y };
+    lastDragMove = false;
+    return;
+  }
+
+  // add pole
+  const charge = (e.button === 0) ? 1 : -1;
+  poles.push({ x: mx, y: my, charge });
+  dirty = true;
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const rect = canvas.getBoundingClientRect();
+  dragging.pole.x = e.clientX - rect.left - dragging.ox;
+  dragging.pole.y = e.clientY - rect.top  - dragging.oy;
+  lastDragMove = true;
+  dirty = true;
+});
+
+canvas.addEventListener('mouseup', () => { dragging = null; });
+canvas.addEventListener('mouseleave', () => { dragging = null; });
+
+canvas.addEventListener('dblclick', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx   = e.clientX - rect.left;
+  const my   = e.clientY - rect.top;
+  const hit  = nearestPole(mx, my);
+  if (hit) {
+    poles = poles.filter(p => p !== hit);
+    dirty = true;
+  }
+});
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// touch
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t    = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  const mx   = t.clientX - rect.left;
+  const my   = t.clientY - rect.top;
+  const hit  = nearestPole(mx, my);
+  if (hit) { dragging = { pole: hit, ox: mx - hit.x, oy: my - hit.y }; return; }
+  poles.push({ x: mx, y: my, charge: 1 });
+  dirty = true;
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!dragging) return;
+  const t    = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  dragging.pole.x = t.clientX - rect.left - dragging.ox;
+  dragging.pole.y = t.clientY - rect.top  - dragging.oy;
+  dirty = true;
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { dragging = null; });
+
+// ─── Buttons ────────────────────────────────────────────────────────────
+function setPreset(config) {
+  poles = [];
+  const cx = W / 2, cy = H / 2;
+  const d  = Math.min(W, H) * 0.2;
+
+  if (config === 'dipole') {
+    poles.push({ x: cx - d, y: cy, charge:  1 });
+    poles.push({ x: cx + d, y: cy, charge: -1 });
+    document.getElementById('modeText').textContent = 'Dipole';
+  } else if (config === 'mono') {
+    poles.push({ x: cx, y: cy, charge: 1 });
+    document.getElementById('modeText').textContent = 'Single +';
+  } else if (config === 'quad') {
+    poles.push({ x: cx - d, y: cy - d, charge:  1 });
+    poles.push({ x: cx + d, y: cy - d, charge: -1 });
+    poles.push({ x: cx + d, y: cy + d, charge:  1 });
+    poles.push({ x: cx - d, y: cy + d, charge: -1 });
+    document.getElementById('modeText').textContent = 'Quadrupole';
+  }
+
+  dirty = true;
+}
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  poles = []; dirty = true;
+  document.getElementById('modeText').textContent = 'Custom';
+});
+
+document.getElementById('btn-dipole').addEventListener('click', () => {
+  setPreset('dipole');
+  setActiveBtn('btn-dipole');
+});
+
+document.getElementById('btn-mono').addEventListener('click', () => {
+  setPreset('mono');
+  setActiveBtn('btn-mono');
+});
+
+document.getElementById('btn-quad').addEventListener('click', () => {
+  setPreset('quad');
+  setActiveBtn('btn-quad');
+});
+
+document.getElementById('btn-density').addEventListener('click', function() {
+  lineDensity = lineDensity === 1 ? 2 : 1;
+  this.textContent = lineDensity === 2 ? 'Fewer Lines' : 'More Lines';
+  this.classList.toggle('active', lineDensity === 2);
+  dirty = true;
+});
+
+document.getElementById('btn-animate').addEventListener('click', function() {
+  flowActive = !flowActive;
+  this.classList.toggle('active', flowActive);
+  if (flowActive) spawnFlowParticles();
+  else particles = [];
+});
+
+document.getElementById('btn-force').addEventListener('click', function() {
+  forceActive = !forceActive;
+  this.classList.toggle('active', forceActive);
+});
+
+function setActiveBtn(id) {
+  ['btn-dipole', 'btn-mono', 'btn-quad'].forEach(b => {
+    document.getElementById(b).classList.toggle('active', b === id);
+  });
+}
+
+// ─── Boot ───────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => { resize(); dirty = true; });
+resize();
+// start with a dipole
+setPreset('dipole');
+setActiveBtn('btn-dipole');
+draw();
+</script>
+</body>
+</html>
