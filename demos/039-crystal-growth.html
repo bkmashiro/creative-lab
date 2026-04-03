@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crystal Growth — creative-lab</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #000;
+  color: #e0e8ff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+header {
+  padding: 18px 24px 10px;
+  text-align: center;
+}
+header h1 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  background: linear-gradient(135deg, #a8d8ff 0%, #d4b8ff 50%, #ffcef0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+header p {
+  color: #5a6a8a;
+  font-size: 0.75rem;
+  margin-top: 4px;
+  letter-spacing: 0.05em;
+}
+canvas {
+  display: block;
+  cursor: crosshair;
+  touch-action: none;
+}
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  padding: 10px 16px;
+  max-width: 700px;
+}
+.ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.ctrl-group label {
+  font-size: 0.7rem;
+  color: #7a8aaa;
+  white-space: nowrap;
+}
+.ctrl-group input[type=range] {
+  width: 80px;
+  accent-color: #a8d8ff;
+}
+.ctrl-group span {
+  font-size: 0.7rem;
+  color: #c0d0f0;
+  min-width: 22px;
+  text-align: right;
+}
+.btn {
+  background: rgba(168,216,255,0.1);
+  border: 1px solid rgba(168,216,255,0.25);
+  color: #a8d8ff;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  letter-spacing: 0.04em;
+}
+.btn:hover { background: rgba(168,216,255,0.2); border-color: rgba(168,216,255,0.5); }
+.btn.active { background: rgba(168,216,255,0.25); border-color: #a8d8ff; }
+#stats {
+  font-size: 0.68rem;
+  color: #4a5a7a;
+  letter-spacing: 0.05em;
+  padding: 2px 0 6px;
+}
+footer {
+  margin-top: auto;
+  padding: 14px;
+  text-align: center;
+  font-size: 0.7rem;
+  color: #2a3a5a;
+  letter-spacing: 0.06em;
+}
+footer a { color: #3a5a8a; text-decoration: none; }
+footer a:hover { color: #a8d8ff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Crystal Growth</h1>
+  <p>Diffusion-Limited Aggregation · Click to add seeds</p>
+</header>
+
+<canvas id="c"></canvas>
+
+<div id="controls">
+  <div class="ctrl-group">
+    <label>Particles/frame</label>
+    <input type="range" id="rateSlider" min="1" max="50" value="10">
+    <span id="rateVal">10</span>
+  </div>
+  <div class="ctrl-group">
+    <label>Stickiness</label>
+    <input type="range" id="stickySlider" min="1" max="100" value="70">
+    <span id="stickyVal">70</span>
+  </div>
+  <div class="ctrl-group">
+    <label>Palette</label>
+    <button class="btn active" id="palBtn0" onclick="setPalette(0)">Ice</button>
+    <button class="btn" id="palBtn1" onclick="setPalette(1)">Fire</button>
+    <button class="btn" id="palBtn2" onclick="setPalette(2)">Gold</button>
+    <button class="btn" id="palBtn3" onclick="setPalette(3)">Neon</button>
+  </div>
+  <button class="btn" onclick="resetSim()">Reset</button>
+</div>
+<div id="stats">particles: 0</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H, gridW, gridH;
+const CELL = 3; // px per grid cell
+let grid; // Uint8Array: 0=empty, 1=aggregate, 2=seed
+let colorGrid; // Uint8Array storing per-cell palette index (age)
+
+let totalParticles = 0;
+let maxRadius = 0; // furthest aggregated point from seed center
+let spawnRadius = 0;
+
+let palette = 0;
+let stickiness = 0.70;
+let rate = 10;
+
+// Palettes: arrays of [r,g,b] stops mapped by age
+const PALETTES = [
+  // Ice: deep blue -> cyan -> white
+  (t) => {
+    const stops = [[10,20,80],[30,80,180],[60,180,255],[160,230,255],[230,245,255],[255,255,255]];
+    return interpPal(stops, t);
+  },
+  // Fire: black -> red -> orange -> yellow -> white
+  (t) => {
+    const stops = [[40,0,0],[180,10,0],[255,60,0],[255,180,0],[255,240,100],[255,255,230]];
+    return interpPal(stops, t);
+  },
+  // Gold: dark brown -> gold -> white
+  (t) => {
+    const stops = [[30,15,0],[120,70,0],[200,150,0],[255,210,50],[255,240,150],[255,252,220]];
+    return interpPal(stops, t);
+  },
+  // Neon: purple -> magenta -> cyan
+  (t) => {
+    const stops = [[20,0,60],[120,0,200],[200,0,255],[255,0,180],[0,200,255],[200,255,255]];
+    return interpPal(stops, t);
+  },
+];
+
+function interpPal(stops, t) {
+  t = Math.max(0, Math.min(1, t));
+  const idx = t * (stops.length - 1);
+  const lo = Math.floor(idx), hi = Math.min(stops.length - 1, lo + 1);
+  const f = idx - lo;
+  const a = stops[lo], b = stops[hi];
+  return [
+    Math.round(a[0] + f * (b[0] - a[0])),
+    Math.round(a[1] + f * (b[1] - a[1])),
+    Math.round(a[2] + f * (b[2] - a[2]))
+  ];
+}
+
+function resize() {
+  const maxW = Math.min(window.innerWidth, 700);
+  const maxH = window.innerHeight - 220;
+  W = Math.floor(maxW / CELL) * CELL;
+  H = Math.floor(Math.max(maxH, 300) / CELL) * CELL;
+  canvas.width = W;
+  canvas.height = H;
+  gridW = W / CELL;
+  gridH = H / CELL;
+  resetSim();
+}
+
+function resetSim() {
+  grid = new Uint8Array(gridW * gridH);
+  colorGrid = new Float32Array(gridW * gridH); // 0..1 normalized age
+  totalParticles = 0;
+  maxRadius = 0;
+
+  // Place initial seed at center
+  const cx = Math.floor(gridW / 2);
+  const cy = Math.floor(gridH / 2);
+  setCell(cx, cy, 1, 0);
+  totalParticles = 1;
+  spawnRadius = Math.min(gridW, gridH) * 0.35;
+
+  // Render
+  imageData = ctx.createImageData(W, H);
+  renderFull();
+  document.getElementById('stats').textContent = `particles: 1`;
+}
+
+let imageData;
+
+function setCell(gx, gy, type, age) {
+  const idx = gy * gridW + gx;
+  grid[idx] = type;
+  colorGrid[idx] = age;
+}
+
+function getCell(gx, gy) {
+  if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH) return -1;
+  return grid[gy * gridW + gx];
+}
+
+function touchesAggregate(gx, gy) {
+  // 8-neighborhood
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const nx = gx + dx, ny = gy + dy;
+      if (nx >= 0 && nx < gridW && ny >= 0 && ny < gridH) {
+        const v = grid[ny * gridW + nx];
+        if (v === 1 || v === 2) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Spawn a particle on a circle slightly outside the current aggregate
+function spawnParticle() {
+  const cx = gridW / 2, cy = gridH / 2;
+  const r = maxRadius + 5 + Math.random() * 3;
+  const angle = Math.random() * 2 * Math.PI;
+  let gx = Math.round(cx + Math.cos(angle) * r);
+  let gy = Math.round(cy + Math.sin(angle) * r);
+  gx = Math.max(1, Math.min(gridW - 2, gx));
+  gy = Math.max(1, Math.min(gridH - 2, gy));
+  return { x: gx, y: gy };
+}
+
+// Random walk one step
+function walkParticle(p) {
+  const dir = Math.floor(Math.random() * 4);
+  if (dir === 0) p.x++;
+  else if (dir === 1) p.x--;
+  else if (dir === 2) p.y++;
+  else p.y--;
+  p.x = Math.max(0, Math.min(gridW - 1, p.x));
+  p.y = Math.max(0, Math.min(gridH - 1, p.y));
+}
+
+function distFromCenter(gx, gy) {
+  const cx = gridW / 2, cy = gridH / 2;
+  return Math.sqrt((gx - cx) ** 2 + (gy - cy) ** 2);
+}
+
+// Compute normalized age (based on distance from center / maxRadius)
+function computeAge(gx, gy) {
+  if (maxRadius < 1) return 0;
+  return Math.min(1, distFromCenter(gx, gy) / maxRadius);
+}
+
+// Incremental render: paint only changed cells into imageData
+function paintCell(gx, gy) {
+  const cidx = gy * gridW + gx;
+  const v = grid[cidx];
+  const age = colorGrid[cidx];
+  const [r, g, b] = v === 0 ? [0, 0, 0] : PALETTES[palette](age);
+
+  const px = gx * CELL, py = gy * CELL;
+  for (let dy = 0; dy < CELL; dy++) {
+    for (let dx = 0; dx < CELL; dx++) {
+      const i = ((py + dy) * W + (px + dx)) * 4;
+      imageData.data[i] = r;
+      imageData.data[i + 1] = g;
+      imageData.data[i + 2] = b;
+      imageData.data[i + 3] = 255;
+    }
+  }
+}
+
+function renderFull() {
+  for (let gy = 0; gy < gridH; gy++) {
+    for (let gx = 0; gx < gridW; gx++) {
+      paintCell(gx, gy);
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+// Active walkers pool
+let walkers = [];
+let dirtySet = new Set();
+
+function step() {
+  // Spawn new walkers up to rate
+  while (walkers.length < rate * 8) {
+    walkers.push(spawnParticle());
+  }
+
+  dirtySet.clear();
+  const killRadius = maxRadius + 20;
+  const cx = gridW / 2, cy = gridH / 2;
+
+  let newWalkers = [];
+  for (let i = 0; i < walkers.length; i++) {
+    const p = walkers[i];
+    walkParticle(p);
+
+    // Kill if too far
+    const d = Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2);
+    if (d > killRadius + 5) continue;
+
+    if (grid[p.y * gridW + p.x] !== 0) {
+      newWalkers.push(spawnParticle());
+      continue;
+    }
+
+    if (touchesAggregate(p.x, p.y)) {
+      // Stickiness check
+      if (Math.random() < stickiness) {
+        // Aggregate!
+        const age = computeAge(p.x, p.y);
+        setCell(p.x, p.y, 1, age);
+        dirtySet.add(p.y * gridW + p.x);
+        totalParticles++;
+        const dist = distFromCenter(p.x, p.y);
+        if (dist > maxRadius) maxRadius = dist;
+        newWalkers.push(spawnParticle());
+      } else {
+        newWalkers.push(p); // didn't stick, keep walking
+      }
+    } else {
+      newWalkers.push(p);
+    }
+  }
+  walkers = newWalkers;
+
+  // Repaint dirty cells
+  if (dirtySet.size > 0) {
+    for (const idx of dirtySet) {
+      const gx = idx % gridW;
+      const gy = Math.floor(idx / gridW);
+      paintCell(gx, gy);
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  document.getElementById('stats').textContent =
+    `particles: ${totalParticles.toLocaleString()}  |  radius: ${Math.round(maxRadius)}  |  walkers: ${walkers.length}`;
+}
+
+// Click to add extra seed
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+  const gx = Math.floor(px / CELL);
+  const gy = Math.floor(py / CELL);
+  if (gx >= 0 && gx < gridW && gy >= 0 && gy < gridH && grid[gy * gridW + gx] === 0) {
+    setCell(gx, gy, 2, 0.5);
+    paintCell(gx, gy);
+    ctx.putImageData(imageData, 0, 0);
+  }
+});
+
+// Controls
+document.getElementById('rateSlider').addEventListener('input', function() {
+  rate = parseInt(this.value);
+  document.getElementById('rateVal').textContent = rate;
+});
+document.getElementById('stickySlider').addEventListener('input', function() {
+  stickiness = parseInt(this.value) / 100;
+  document.getElementById('stickyVal').textContent = this.value;
+});
+
+function setPalette(idx) {
+  palette = idx;
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('palBtn' + i).classList.toggle('active', i === idx);
+  }
+  // Recompute ages with new palette
+  renderFull();
+  ctx.putImageData(imageData, 0, 0);
+}
+
+function resetSim() {
+  grid = new Uint8Array(gridW * gridH);
+  colorGrid = new Float32Array(gridW * gridH);
+  walkers = [];
+  totalParticles = 0;
+  maxRadius = 0;
+
+  const cx = Math.floor(gridW / 2);
+  const cy = Math.floor(gridH / 2);
+  const idx = cy * gridW + cx;
+  grid[idx] = 1;
+  colorGrid[idx] = 0;
+  totalParticles = 1;
+
+  imageData = ctx.createImageData(W, H);
+  renderFull();
+  ctx.putImageData(imageData, 0, 0);
+  document.getElementById('stats').textContent = `particles: 1`;
+}
+
+// Animation loop
+let running = true;
+function loop() {
+  if (running) {
+    for (let i = 0; i < rate; i++) step();
+  }
+  requestAnimationFrame(loop);
+}
+
+window.addEventListener('resize', resize);
+resize();
+loop();
+</script>
+
+<footer>
+  <a href="https://github.com/bkmashiro/creative-lab" target="_blank">bkmashiro/creative-lab</a>
+  &nbsp;·&nbsp;
+  <a href="https://cl.yuzhes.com">cl.yuzhes.com</a>
+</footer>
+</body>
+</html>

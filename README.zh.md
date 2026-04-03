@@ -60,6 +60,7 @@
 | [036](demos/036-plasma-effect.html) | 等离子体效果 | WebGL，GLSL，Demo场景，颜色循环 |
 | [037](demos/037-galaxy-spiral.html) | 星系螺旋 | Canvas 2D，对数螺旋线，旋转曲线 |
 | [038](demos/038-magnetic-field-lines.html) | 磁场线 | Canvas 2D，RK4 场线追踪，矢量场 |
+| [039](demos/039-crystal-growth.html) | 晶体生长 | Canvas 2D，DLA 扩散限制聚合 |
 
 *每 2 天更新 →*
 

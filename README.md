@@ -60,6 +60,7 @@
 | [036](demos/036-plasma-effect.html) | Plasma Effect | WebGL, GLSL, demoscene, color cycling |
 | [037](demos/037-galaxy-spiral.html) | Galaxy Spiral | Canvas 2D, logarithmic spiral, rotation curves |
 | [038](demos/038-magnetic-field-lines.html) | Magnetic Field Lines | Canvas 2D, RK4 field line tracing, vector field |
+| [039](demos/039-crystal-growth.html) | Crystal Growth | Canvas 2D, DLA diffusion-limited aggregation |
 
 *More coming every 2 days →*
 
