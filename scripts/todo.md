@@ -7,8 +7,6 @@
 - [x] 004 Fractal Explorer (Mandelbrot/Julia set, interactive zoom)
 - [x] 005 Audio Visualizer (Web Audio API, bar + waveform)
 - [x] 006 Voronoi Diagram (animated, click to add points)
-
-## Queue
 - [x] 007 Noise Terrain (Perlin noise heightmap, isometric view)
 - [x] 008 L-System Tree (parametric branching, sliders)
 - [x] 009 Matrix Rain (katakana/ascii variant)
@@ -42,12 +40,46 @@
 - [x] 037 Galaxy Spiral (star distribution, rotation curves)
 - [x] 038 Magnetic Field Lines (dipoles, vector field)
 - [x] 039 Crystal Growth (DLA diffusion-limited aggregation, WebGL)
-- [ ] 040 Fluid Dynamics (Navier-Stokes, vorticity, WebGL)
-- [ ] 041 3D Rubik's Cube (WebGL, interactive rotation, solve animation)
-- [ ] 042 Cellular Noise (Worley noise, organic textures, WebGL)
-- [ ] 043 Rope Physics (verlet, hanging, mouse interaction)
-- [ ] 044 Gravity Lensing (Einstein ring, WebGL)
-- [ ] 045 Terrain Erosion (hydraulic erosion, heightmap)
-- [ ] 046 Flow Field (curl noise, particle advection)
-- [ ] 047 Isosurface (marching cubes, 3D WebGL)
-- [ ] 048 Wave Equation (2D membrane, real-time PDE solver)
+
+## Queue
+
+### Physics & Simulation
+- [ ] 040 Fluid Dynamics (Navier-Stokes, vorticity confinement, WebGL)
+- [ ] 041 Rope Physics (verlet constraints, hanging + mouse drag)
+- [ ] 042 Soft Body (pressure-based deformable circle, springs)
+- [ ] 043 Wave Equation (2D membrane PDE solver, real-time)
+- [ ] 044 Gravity Lensing (Einstein ring, WebGL GLSL)
+- [ ] 045 N-Body Gravity (Barnes-Hut tree, thousands of particles)
+- [ ] 046 Terrain Erosion (hydraulic erosion on heightmap)
+- [ ] 047 Smoke + Wind (velocity field advection, canvas)
+- [ ] 048 Elastic Collisions (2D rigid body, angle-based resolution)
+
+### Generative & Mathematical
+- [ ] 049 Flow Field (curl noise, particle advection, trails)
+- [ ] 050 Isosurface (marching cubes, 3D implicit surface, WebGL)
+- [ ] 051 Cellular Noise (Worley/F1 noise, organic texture, WebGL)
+- [ ] 052 Strange Attractors (Halvorsen, Aizawa, Thomas — 3D projection)
+- [ ] 053 Spirograph (hypotrochoid/epitrochoid, parametric, interactive)
+- [ ] 054 Turtle Graphics (recursive L-systems, dragon curve, Hilbert)
+- [ ] 055 Mandelbulb (3D fractal raymarching, WebGL)
+- [ ] 056 Voronoi 3D (Fortune's in 3D, projected, WebGL)
+- [ ] 057 Wave Function Collapse (procedural tile generation, canvas)
+- [ ] 058 Space Filling Curves (Hilbert, Peano — animated unfolding)
+
+### Life & Emergence
+- [ ] 059 Slime Mold (Physarum polycephalum, trail diffusion, WebGL)
+- [ ] 060 Ant Colony (pheromone trails, food seeking, canvas)
+- [ ] 061 Genetic Algorithm (evolving shapes to match target, visualized)
+- [ ] 062 Flocking 3D (Boids in 3D, WebGL spheres)
+- [ ] 063 Fireflies (phase-coupled oscillators, synchronization)
+- [ ] 064 Predator-Prey (Lotka-Volterra, spatial grid, canvas)
+
+### Interactive & Creative
+- [ ] 065 Voronoi Stippling (image → dot art, D3-inspired, canvas)
+- [ ] 066 Wireworld (Turing-complete cellular automaton, logic gates)
+- [ ] 067 Sound Visualizer Shader (mic → WebGL shader, real-time FFT)
+- [ ] 068 Fluid Color Mixing (interactive dye injection, WebGL)
+- [ ] 069 3D Rubik's Cube (WebGL, mouse drag rotation, scramble + solve)
+- [ ] 070 Sand + Water (multi-material falling sand, pixel sim)
+- [ ] 071 Bloom Shader (HDR bloom post-processing, WebGL)
+- [ ] 072 Pixel Sorting (glitch art, threshold + angle control)
