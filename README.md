@@ -61,6 +61,7 @@
 | [037](demos/037-galaxy-spiral.html) | Galaxy Spiral | Canvas 2D, logarithmic spiral, rotation curves |
 | [038](demos/038-magnetic-field-lines.html) | Magnetic Field Lines | Canvas 2D, RK4 field line tracing, vector field |
 | [039](demos/039-crystal-growth.html) | Crystal Growth | Canvas 2D, DLA diffusion-limited aggregation |
+| [040](demos/040-fluid-dynamics.html) | Fluid Dynamics | WebGL2, Navier-Stokes, vorticity confinement |
 
 *More coming every 2 days →*
 

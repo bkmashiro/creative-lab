@@ -44,7 +44,7 @@
 ## Queue
 
 ### Physics & Simulation
-- [ ] 040 Fluid Dynamics (Navier-Stokes, vorticity confinement, WebGL)
+- [x] 040 Fluid Dynamics (Navier-Stokes, vorticity confinement, WebGL)
 - [ ] 041 Rope Physics (verlet constraints, hanging + mouse drag)
 - [ ] 042 Soft Body (pressure-based deformable circle, springs)
 - [ ] 043 Wave Equation (2D membrane PDE solver, real-time)
