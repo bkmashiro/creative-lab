@@ -62,6 +62,7 @@
 | [038](demos/038-magnetic-field-lines.html) | Magnetic Field Lines | Canvas 2D, RK4 field line tracing, vector field |
 | [039](demos/039-crystal-growth.html) | Crystal Growth | Canvas 2D, DLA diffusion-limited aggregation |
 | [040](demos/040-fluid-dynamics.html) | Fluid Dynamics | WebGL2, Navier-Stokes, vorticity confinement |
+| [041](demos/041-rope-physics.html) | Rope Physics | Canvas 2D, Verlet integration, distance constraints, mouse drag |
 
 *More coming every 2 days →*
 

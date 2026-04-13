@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#041 Rope Physics — creative-lab</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0a0c12;
+  color: #e0e8ff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  flex: 1;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+#ui {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 14px 16px;
+  min-width: 220px;
+  z-index: 10;
+}
+
+#ui h1 {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6a7a9a;
+  margin-bottom: 10px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  margin-bottom: 7px;
+}
+
+.row label {
+  width: 90px;
+  color: #c0cce0;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+}
+
+.row input[type=range] {
+  flex: 1;
+  accent-color: #7eb8ff;
+  cursor: pointer;
+}
+
+.row .val {
+  width: 28px;
+  text-align: right;
+  color: #6a7a9a;
+  font-size: 0.72rem;
+}
+
+.btn-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+button {
+  flex: 1;
+  background: rgba(126,184,255,0.1);
+  border: 1px solid rgba(126,184,255,0.25);
+  color: #7eb8ff;
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+button:hover {
+  background: rgba(126,184,255,0.2);
+}
+
+.hint {
+  font-size: 0.65rem;
+  color: #3a4a6a;
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
+footer {
+  position: fixed;
+  bottom: 10px;
+  right: 14px;
+  font-size: 0.65rem;
+  color: #2a3a5a;
+  z-index: 10;
+}
+
+footer a {
+  color: #4a6a9a;
+  text-decoration: none;
+}
+
+footer a:hover { color: #7eb8ff; }
+
+#info {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  font-size: 0.68rem;
+  color: #3a4a6a;
+  text-align: right;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <h1>#041 Rope Physics</h1>
+  <div class="row">
+    <label>Segments</label>
+    <input type="range" id="sSegments" min="8" max="60" value="24" step="1">
+    <span class="val" id="vSegments">24</span>
+  </div>
+  <div class="row">
+    <label>Gravity</label>
+    <input type="range" id="sGravity" min="0" max="2000" value="800" step="10">
+    <span class="val" id="vGravity">800</span>
+  </div>
+  <div class="row">
+    <label>Damping</label>
+    <input type="range" id="sDamping" min="0.90" max="0.999" value="0.985" step="0.001">
+    <span class="val" id="vDamping">0.985</span>
+  </div>
+  <div class="row">
+    <label>Iterations</label>
+    <input type="range" id="sIter" min="2" max="30" value="12" step="1">
+    <span class="val" id="vIter">12</span>
+  </div>
+  <div class="row">
+    <label>Rope width</label>
+    <input type="range" id="sWidth" min="1" max="10" value="3" step="0.5">
+    <span class="val" id="vWidth">3</span>
+  </div>
+  <div class="row">
+    <label>Wind</label>
+    <input type="range" id="sWind" min="-500" max="500" value="0" step="10">
+    <span class="val" id="vWind">0</span>
+  </div>
+  <div class="btn-row">
+    <button id="btnAdd">+ Add Rope</button>
+    <button id="btnClear">Clear</button>
+    <button id="btnReset">Reset</button>
+  </div>
+  <div class="hint">
+    Drag any node to pull rope<br>
+    Drag anchor (top node) to reposition
+  </div>
+</div>
+
+<div id="info">
+  <span id="fpsDisplay">60 fps</span>
+</div>
+
+<footer>
+  <a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 041
+</footer>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// ── params ───────────────────────────────────────────────
+let SEGMENTS   = 24;
+let GRAVITY    = 800;
+let DAMPING    = 0.985;
+let ITERATIONS = 12;
+let ROPE_WIDTH = 3;
+let WIND       = 0;
+
+// ── rope colours ─────────────────────────────────────────
+const PALETTE = [
+  ['#ff6b6b','#ffa07a'],
+  ['#7eb8ff','#a8d8ff'],
+  ['#80ffb4','#b4ffda'],
+  ['#ffcc6b','#ffe49a'],
+  ['#d4a8ff','#f0ceff'],
+  ['#ff9ef5','#ffd4ff'],
+];
+
+// ── state ─────────────────────────────────────────────────
+class Point {
+  constructor(x, y, pinned = false) {
+    this.x    = x;
+    this.y    = y;
+    this.oldX = x;
+    this.oldY = y;
+    this.pinned = pinned;
+  }
+}
+
+class Rope {
+  constructor(anchorX, anchorY, length, segments, colorIdx) {
+    this.anchorX  = anchorX;
+    this.anchorY  = anchorY;
+    this.length   = length;
+    this.segments = segments;
+    this.colorIdx = colorIdx % PALETTE.length;
+    this.points   = [];
+    this.segLen   = length / segments;
+    this.build();
+  }
+
+  build() {
+    this.points = [];
+    const sl = this.segLen;
+    for (let i = 0; i <= this.segments; i++) {
+      // slight random initial sway
+      const jitter = (i > 0) ? (Math.random() - 0.5) * 4 : 0;
+      this.points.push(new Point(
+        this.anchorX + jitter,
+        this.anchorY + i * sl,
+        i === 0
+      ));
+    }
+  }
+
+  rebuild(newSeg) {
+    this.segments = newSeg;
+    this.segLen   = this.length / newSeg;
+    this.build();
+  }
+
+  update(dt) {
+    const pts = this.points;
+    const g   = GRAVITY;
+    const d   = DAMPING;
+    const w   = WIND;
+
+    // verlet integration
+    for (const p of pts) {
+      if (p.pinned) { p.x = this.anchorX; p.y = this.anchorY; continue; }
+      const vx = (p.x - p.oldX) * d;
+      const vy = (p.y - p.oldY) * d;
+      p.oldX = p.x;
+      p.oldY = p.y;
+      p.x += vx + w * dt * dt;
+      p.y += vy + g * dt * dt;
+    }
+
+    // constraint iterations
+    const sl = this.segLen;
+    for (let iter = 0; iter < ITERATIONS; iter++) {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist = Math.sqrt(dx*dx + dy*dy) || 0.0001;
+        const diff = (dist - sl) / dist * 0.5;
+        const ox = dx * diff, oy = dy * diff;
+        if (!a.pinned) { a.x += ox; a.y += oy; }
+        if (!b.pinned) { b.x -= ox; b.y -= oy; }
+      }
+      // re-pin anchor every iteration
+      pts[0].x = this.anchorX;
+      pts[0].y = this.anchorY;
+    }
+  }
+
+  draw(ctx, ropePx) {
+    const pts   = this.points;
+    const [c1, c2] = PALETTE[this.colorIdx];
+    const n = pts.length;
+
+    // rope body with gradient along length
+    for (let i = 0; i < n - 1; i++) {
+      const t  = i / (n - 1);
+      const a  = pts[i], b = pts[i + 1];
+      // thickness taper toward end
+      const lw = ropePx * (1 - t * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = lerpColor(c1, c2, t);
+      ctx.lineWidth   = lw;
+      ctx.lineCap     = 'round';
+
+      // glow
+      ctx.shadowColor = c1;
+      ctx.shadowBlur  = ropePx * 4;
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+
+    // anchor point
+    const head = pts[0];
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, ropePx * 2.5, 0, Math.PI*2);
+    ctx.fillStyle = '#e0e8ff';
+    ctx.shadowColor = '#7eb8ff';
+    ctx.shadowBlur  = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // end weight
+    const tail = pts[n - 1];
+    const r = ropePx * 3;
+    ctx.beginPath();
+    ctx.arc(tail.x, tail.y, r, 0, Math.PI*2);
+    ctx.fillStyle = c2;
+    ctx.shadowColor = c1;
+    ctx.shadowBlur  = 15;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+// ── helpers ───────────────────────────────────────────────
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return [r,g,b];
+}
+
+function lerpColor(h1, h2, t) {
+  const [r1,g1,b1] = hexToRgb(h1);
+  const [r2,g2,b2] = hexToRgb(h2);
+  return `rgb(${(r1+(r2-r1)*t)|0},${(g1+(g2-g1)*t)|0},${(b1+(b2-b1)*t)|0})`;
+}
+
+// ── rope collection ───────────────────────────────────────
+let ropes = [];
+let colorCounter = 0;
+
+function makeRope(ax, ay) {
+  const len = canvas.height * 0.5 + Math.random() * canvas.height * 0.2;
+  const r = new Rope(ax, ay, len, SEGMENTS, colorCounter++);
+  ropes.push(r);
+  return r;
+}
+
+function defaultRopes() {
+  ropes = [];
+  colorCounter = 0;
+  const W = canvas.width;
+  const margin = W * 0.12;
+  const count  = 5;
+  for (let i = 0; i < count; i++) {
+    const x = margin + (W - 2*margin) * (i / (count-1));
+    makeRope(x, 30 + Math.random()*20);
+  }
+}
+
+// ── drag ──────────────────────────────────────────────────
+let dragTarget = null; // { rope, pointIndex }
+const PICK_R   = 20;
+
+function nearestPoint(mx, my) {
+  let best = null, bestD = PICK_R * PICK_R;
+  for (const rope of ropes) {
+    for (let i = 0; i < rope.points.length; i++) {
+      const p = rope.points[i];
+      const d = (p.x-mx)**2 + (p.y-my)**2;
+      if (d < bestD) { bestD = d; best = { rope, idx: i }; }
+    }
+  }
+  return best;
+}
+
+function getMousePos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const src  = e.touches ? e.touches[0] : e;
+  return {
+    x: (src.clientX - rect.left) * (canvas.width  / rect.width),
+    y: (src.clientY - rect.top)  * (canvas.height / rect.height),
+  };
+}
+
+canvas.addEventListener('mousedown',  onDown);
+canvas.addEventListener('touchstart', onDown, { passive: true });
+canvas.addEventListener('mousemove',  onMove);
+canvas.addEventListener('touchmove',  onMove, { passive: true });
+canvas.addEventListener('mouseup',    onUp);
+canvas.addEventListener('touchend',   onUp);
+
+function onDown(e) {
+  const { x, y } = getMousePos(e);
+  const hit = nearestPoint(x, y);
+  if (hit) {
+    dragTarget = hit;
+    // temporarily un-pin if grabbing anchor to move it
+    if (hit.idx === 0) hit.rope.points[0].pinned = false;
+  }
+}
+
+function onMove(e) {
+  if (!dragTarget) return;
+  const { x, y } = getMousePos(e);
+  const p = dragTarget.rope.points[dragTarget.idx];
+  p.oldX = p.x;
+  p.oldY = p.y;
+  p.x = x;
+  p.y = y;
+  // if moving anchor, update anchorX/Y
+  if (dragTarget.idx === 0) {
+    dragTarget.rope.anchorX = x;
+    dragTarget.rope.anchorY = y;
+  }
+}
+
+function onUp() {
+  if (dragTarget) {
+    // re-pin anchor
+    if (dragTarget.idx === 0) {
+      dragTarget.rope.points[0].pinned = true;
+    }
+    dragTarget = null;
+  }
+}
+
+// ── resize ────────────────────────────────────────────────
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+
+window.addEventListener('resize', () => { resize(); defaultRopes(); });
+
+// ── controls ──────────────────────────────────────────────
+function bindSlider(id, vidId, key, toNum) {
+  const sl  = document.getElementById(id);
+  const val = document.getElementById(vidId);
+  sl.addEventListener('input', () => {
+    const v = toNum(sl.value);
+    val.textContent = v;
+    const wasNum = typeof window[key] === 'number';
+    switch(key) {
+      case 'SEGMENTS':
+        SEGMENTS = v;
+        for (const r of ropes) r.rebuild(v);
+        break;
+      case 'GRAVITY':    GRAVITY    = v; break;
+      case 'DAMPING':    DAMPING    = v; break;
+      case 'ITERATIONS': ITERATIONS = v; break;
+      case 'ROPE_WIDTH': ROPE_WIDTH = v; break;
+      case 'WIND':       WIND       = v; break;
+    }
+  });
+}
+
+bindSlider('sSegments', 'vSegments', 'SEGMENTS',   v => parseInt(v));
+bindSlider('sGravity',  'vGravity',  'GRAVITY',    v => parseInt(v));
+bindSlider('sDamping',  'vDamping',  'DAMPING',    v => parseFloat(parseFloat(v).toFixed(3)));
+bindSlider('sIter',     'vIter',     'ITERATIONS', v => parseInt(v));
+bindSlider('sWidth',    'vWidth',    'ROPE_WIDTH',  v => parseFloat(v));
+bindSlider('sWind',     'vWind',     'WIND',       v => parseInt(v));
+
+document.getElementById('btnAdd').addEventListener('click', () => {
+  makeRope(80 + Math.random() * (canvas.width - 160), 20 + Math.random()*30);
+});
+
+document.getElementById('btnClear').addEventListener('click', () => { ropes = []; });
+
+document.getElementById('btnReset').addEventListener('click', () => { defaultRopes(); });
+
+// ── fps ───────────────────────────────────────────────────
+let fps = 60, fpsSmooth = 60, lastT = 0;
+const fpsEl = document.getElementById('fpsDisplay');
+
+// ── main loop ─────────────────────────────────────────────
+function loop(t) {
+  requestAnimationFrame(loop);
+
+  const dt = Math.min((t - lastT) / 1000, 0.033); // cap at 33 ms
+  lastT = t;
+
+  // fps
+  if (dt > 0) {
+    fps = 1 / dt;
+    fpsSmooth = fpsSmooth * 0.9 + fps * 0.1;
+    fpsEl.textContent = Math.round(fpsSmooth) + ' fps';
+  }
+
+  // simulate
+  for (const rope of ropes) rope.update(dt);
+
+  // draw background
+  ctx.fillStyle = '#0a0c12';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // ceiling beam
+  const beamGrad = ctx.createLinearGradient(0, 0, canvas.width, 0);
+  beamGrad.addColorStop(0,   'rgba(40,50,80,0)');
+  beamGrad.addColorStop(0.1, 'rgba(50,65,100,0.8)');
+  beamGrad.addColorStop(0.9, 'rgba(50,65,100,0.8)');
+  beamGrad.addColorStop(1,   'rgba(40,50,80,0)');
+  ctx.fillStyle = beamGrad;
+  ctx.fillRect(0, 0, canvas.width, 6);
+
+  // subtle grid
+  ctx.strokeStyle = 'rgba(30,40,70,0.25)';
+  ctx.lineWidth   = 1;
+  ctx.setLineDash([2, 8]);
+  const gridSz = 60;
+  for (let x = 0; x < canvas.width; x += gridSz) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y < canvas.height; y += gridSz) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // draw ropes
+  ctx.globalCompositeOperation = 'lighter';
+  for (const rope of ropes) rope.draw(ctx, ROPE_WIDTH);
+  ctx.globalCompositeOperation = 'source-over';
+
+  // highlight dragged point
+  if (dragTarget) {
+    const p = dragTarget.rope.points[dragTarget.idx];
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, ROPE_WIDTH * 4, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+// ── init ──────────────────────────────────────────────────
+resize();
+defaultRopes();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
