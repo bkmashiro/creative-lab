@@ -63,6 +63,7 @@
 | [039](demos/039-crystal-growth.html) | Crystal Growth | Canvas 2D, DLA diffusion-limited aggregation |
 | [040](demos/040-fluid-dynamics.html) | Fluid Dynamics | WebGL2, Navier-Stokes, vorticity confinement |
 | [041](demos/041-rope-physics.html) | Rope Physics | Canvas 2D, Verlet integration, distance constraints, mouse drag |
+| [042](demos/042-soft-body.html) | Soft Body | Canvas 2D, pressure-based deformable blobs, spring constraints, Verlet |
 
 *More coming every 2 days →*
 

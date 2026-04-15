@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#042 Soft Body — creative-lab</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #080b14;
+  color: #e0e8ff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  flex: 1;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+#ui {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 14px 16px;
+  min-width: 230px;
+  z-index: 10;
+  user-select: none;
+}
+
+#ui h1 {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6a7a9a;
+  margin-bottom: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.row label {
+  font-size: 0.7rem;
+  color: #8a9abb;
+  width: 90px;
+  flex-shrink: 0;
+}
+
+.row input[type=range] {
+  flex: 1;
+  accent-color: #7eb8ff;
+  height: 3px;
+  cursor: pointer;
+}
+
+.row span {
+  font-size: 0.7rem;
+  color: #c8d8f8;
+  width: 34px;
+  text-align: right;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  margin: 8px 0;
+}
+
+.btn-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+button {
+  flex: 1;
+  padding: 5px 0;
+  font-size: 0.68rem;
+  background: rgba(126,184,255,0.1);
+  border: 1px solid rgba(126,184,255,0.25);
+  color: #7eb8ff;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+button:hover { background: rgba(126,184,255,0.22); }
+
+#hint {
+  position: fixed;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.68rem;
+  color: #3a4a6a;
+  pointer-events: none;
+}
+
+footer {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  color: #2a3550;
+  flex-shrink: 0;
+}
+
+footer a { color: #3a5080; text-decoration: none; }
+footer a:hover { color: #7eb8ff; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <h1>#042 · Soft Body</h1>
+
+  <div class="row">
+    <label>Pressure</label>
+    <input type="range" id="sPressure" min="0" max="200" value="80" step="1">
+    <span id="vPressure">80</span>
+  </div>
+  <div class="row">
+    <label>Stiffness</label>
+    <input type="range" id="sStiffness" min="0.01" max="1.0" value="0.35" step="0.01">
+    <span id="vStiffness">0.35</span>
+  </div>
+  <div class="row">
+    <label>Damping</label>
+    <input type="range" id="sDamping" min="0.80" max="0.999" value="0.96" step="0.001">
+    <span id="vDamping">0.96</span>
+  </div>
+  <div class="row">
+    <label>Gravity</label>
+    <input type="range" id="sGravity" min="0" max="1.5" value="0.4" step="0.01">
+    <span id="vGravity">0.40</span>
+  </div>
+  <div class="row">
+    <label>Nodes</label>
+    <input type="range" id="sNodes" min="8" max="64" value="24" step="1">
+    <span id="vNodes">24</span>
+  </div>
+
+  <hr class="divider">
+
+  <div class="btn-row">
+    <button id="btnReset">Reset</button>
+    <button id="btnAdd">+ Body</button>
+    <button id="btnGravOff">Gravity ↕</button>
+  </div>
+</div>
+
+<div id="hint">Drag blobs · Scroll to zoom</div>
+
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a>&nbsp;·&nbsp;demo 042</footer>
+
+<script>
+'use strict';
+
+// ─── canvas setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+function resize() {
+  canvas.width  = canvas.clientWidth  * devicePixelRatio;
+  canvas.height = canvas.clientHeight * devicePixelRatio;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── parameters (live-bound to sliders) ──────────────────────────────────────
+const P = {
+  pressure:   80,
+  stiffness:  0.35,
+  damping:    0.96,
+  gravity:    0.4,
+  nodes:      24,
+  gravSign:   1,   // +1 or -1 for gravity flip
+};
+
+function bindSlider(id, key, fmt) {
+  const sl = document.getElementById('s' + id);
+  const sp = document.getElementById('v' + id);
+  sl.addEventListener('input', () => {
+    P[key] = parseFloat(sl.value);
+    sp.textContent = fmt ? fmt(P[key]) : P[key];
+  });
+}
+bindSlider('Pressure',  'pressure');
+bindSlider('Stiffness', 'stiffness', v => v.toFixed(2));
+bindSlider('Damping',   'damping',   v => v.toFixed(3));
+bindSlider('Gravity',   'gravity',   v => v.toFixed(2));
+
+document.getElementById('sNodes').addEventListener('input', e => {
+  P.nodes = parseInt(e.target.value);
+  document.getElementById('vNodes').textContent = P.nodes;
+});
+
+// ─── soft body ───────────────────────────────────────────────────────────────
+class SoftBody {
+  constructor(cx, cy, radius, n, hue) {
+    this.n       = n;
+    this.radius  = radius;
+    this.hue     = hue;
+    this.px      = new Float64Array(n);   // current positions
+    this.py      = new Float64Array(n);
+    this.ox      = new Float64Array(n);   // previous positions (verlet)
+    this.oy      = new Float64Array(n);
+    this.restLen = new Float64Array(n);   // spring rest lengths (perimeter)
+    this.fixed   = new Uint8Array(n);     // pinned nodes
+
+    // initialise in a circle
+    for (let i = 0; i < n; i++) {
+      const a    = (i / n) * Math.PI * 2;
+      this.px[i] = cx + Math.cos(a) * radius;
+      this.py[i] = cy + Math.sin(a) * radius;
+      this.ox[i] = this.px[i];
+      this.oy[i] = this.py[i];
+    }
+
+    // compute rest lengths from initial positions
+    this.computeRestLengths();
+
+    // target area (from shoelace formula of initial circle)
+    this.targetArea = this.area();
+  }
+
+  computeRestLengths() {
+    const { n, px, py, restLen } = this;
+    for (let i = 0; i < n; i++) {
+      const j  = (i + 1) % n;
+      const dx = px[j] - px[i];
+      const dy = py[j] - py[i];
+      restLen[i] = Math.sqrt(dx * dx + dy * dy);
+    }
+  }
+
+  area() {
+    const { n, px, py } = this;
+    let a = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      a += px[i] * py[j] - px[j] * py[i];
+    }
+    return Math.abs(a) * 0.5;
+  }
+
+  step(dt) {
+    const { n, px, py, ox, oy, restLen, fixed } = this;
+    const W  = canvas.width;
+    const H  = canvas.height;
+    const grav  = P.gravity  * P.gravSign * dt * dt;
+    const damp  = P.damping;
+    const stiff = P.stiffness;
+
+    // ── verlet integrate ──
+    for (let i = 0; i < n; i++) {
+      if (fixed[i]) { ox[i] = px[i]; oy[i] = py[i]; continue; }
+      const vx = (px[i] - ox[i]) * damp;
+      const vy = (py[i] - oy[i]) * damp;
+      ox[i] = px[i];
+      oy[i] = py[i];
+      px[i] += vx;
+      py[i] += vy + grav;
+    }
+
+    // ── constraints (multiple iterations) ──
+    const ITERS = 6;
+    for (let it = 0; it < ITERS; it++) {
+      // perimeter spring constraints
+      for (let i = 0; i < n; i++) {
+        const j  = (i + 1) % n;
+        const dx = px[j] - px[i];
+        const dy = py[j] - py[i];
+        const len = Math.sqrt(dx * dx + dy * dy) || 1e-9;
+        const diff = (len - restLen[i]) / len * stiff * 0.5;
+        if (!fixed[i]) { px[i] += dx * diff; py[i] += dy * diff; }
+        if (!fixed[j]) { px[j] -= dx * diff; py[j] -= dy * diff; }
+      }
+
+      // pressure force (gas model)
+      const curArea = this.area();
+      if (curArea > 1e-3) {
+        const pFactor = (P.pressure * (this.targetArea - curArea)) / (curArea + 1e-9) * 0.0012;
+        for (let i = 0; i < n; i++) {
+          if (fixed[i]) continue;
+          const j  = (i + 1) % n;
+          // outward normal of edge i→j
+          const ex = px[j] - px[i];
+          const ey = py[j] - py[i];
+          const edgeLen = Math.sqrt(ex * ex + ey * ey) || 1e-9;
+          const nx = -ey / edgeLen;
+          const ny =  ex / edgeLen;
+          const f  = edgeLen * pFactor;
+          px[i] += nx * f;
+          py[i] += ny * f;
+          px[j] += nx * f;
+          py[j] += ny * f;
+        }
+      }
+    }
+
+    // ── boundary collision ──
+    const BOUNCE = 0.3;
+    const MARGIN = 2;
+    for (let i = 0; i < n; i++) {
+      if (fixed[i]) continue;
+      const vx = px[i] - ox[i];
+      const vy = py[i] - oy[i];
+      if (px[i] < MARGIN)     { px[i] = MARGIN;     ox[i] = px[i] + vx * BOUNCE; }
+      if (px[i] > W - MARGIN) { px[i] = W - MARGIN; ox[i] = px[i] + vx * BOUNCE; }
+      if (py[i] < MARGIN)     { py[i] = MARGIN;     oy[i] = py[i] + vy * BOUNCE; }
+      if (py[i] > H - MARGIN) { py[i] = H - MARGIN; oy[i] = py[i] + vy * BOUNCE; }
+    }
+  }
+
+  draw(ctx) {
+    const { n, px, py } = this;
+
+    // filled blob
+    ctx.beginPath();
+    ctx.moveTo(px[0], py[0]);
+    for (let i = 1; i < n; i++) {
+      // smooth catmull-rom-like curve through nodes
+      const prev = (i - 1 + n) % n;
+      const next = (i + 1) % n;
+      const nx   = (px[next] - px[prev]) / 6;
+      const ny   = (py[next] - py[prev]) / 6;
+      ctx.bezierCurveTo(
+        px[prev] + (px[i] - px[prev]) / 3 + nx,
+        py[prev] + (py[i] - py[prev]) / 3 + ny,
+        px[i] - (px[next] - px[prev]) / 6,
+        py[i] - (py[next] - py[prev]) / 6,
+        px[i], py[i]
+      );
+    }
+    ctx.closePath();
+
+    // fill with radial gradient
+    const cx = px.reduce((a, b) => a + b, 0) / n;
+    const cy = py.reduce((a, b) => a + b, 0) / n;
+    const r  = this.radius * 1.1;
+    const grd = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.3, r * 0.1, cx, cy, r);
+    grd.addColorStop(0,   `hsla(${this.hue},90%,80%,0.95)`);
+    grd.addColorStop(0.5, `hsla(${this.hue},80%,55%,0.85)`);
+    grd.addColorStop(1,   `hsla(${this.hue},70%,25%,0.6)`);
+    ctx.fillStyle = grd;
+    ctx.fill();
+
+    // rim glow
+    ctx.strokeStyle = `hsla(${this.hue},90%,75%,0.5)`;
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+
+    // draw nodes (small dots)
+    for (let i = 0; i < n; i++) {
+      ctx.beginPath();
+      ctx.arc(px[i], py[i], 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = this.fixed[i]
+        ? `hsla(${this.hue},60%,80%,1)`
+        : `hsla(${this.hue},100%,90%,0.7)`;
+      ctx.fill();
+    }
+
+    // draw springs (faint)
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      ctx.moveTo(px[i], py[i]);
+      ctx.lineTo(px[j], py[j]);
+    }
+    ctx.strokeStyle = `hsla(${this.hue},60%,70%,0.15)`;
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+  }
+}
+
+// ─── world ───────────────────────────────────────────────────────────────────
+let bodies = [];
+
+function spawnBody(cx, cy, hue) {
+  const n   = P.nodes;
+  const r   = 70 + Math.random() * 40;
+  bodies.push(new SoftBody(cx, cy, r, n, hue ?? (Math.random() * 360 | 0)));
+}
+
+function resetWorld() {
+  bodies = [];
+  const W = canvas.width, H = canvas.height;
+  spawnBody(W * 0.35, H * 0.40, 200);   // blue-ish
+  spawnBody(W * 0.65, H * 0.40, 30);    // orange
+}
+resetWorld();
+
+// ─── mouse / touch interaction ───────────────────────────────────────────────
+let drag = null;   // { body, nodeIdx }
+
+function toCanvas(e) {
+  const r = canvas.getBoundingClientRect();
+  const dpr = devicePixelRatio;
+  const cx  = (e.clientX - r.left) * dpr;
+  const cy  = (e.clientY - r.top)  * dpr;
+  return { cx, cy };
+}
+
+function findNearest(cx, cy) {
+  let best = null, bestDist = Infinity;
+  for (const body of bodies) {
+    for (let i = 0; i < body.n; i++) {
+      const dx = body.px[i] - cx;
+      const dy = body.py[i] - cy;
+      const d  = dx * dx + dy * dy;
+      if (d < bestDist) { bestDist = d; best = { body, idx: i }; }
+    }
+  }
+  return bestDist < (50 * devicePixelRatio) ** 2 ? best : null;
+}
+
+canvas.addEventListener('pointerdown', e => {
+  const { cx, cy } = toCanvas(e);
+  const hit = findNearest(cx, cy);
+  if (hit) {
+    drag = hit;
+    drag.body.fixed[drag.idx] = 1;
+    canvas.setPointerCapture(e.pointerId);
+  }
+});
+
+canvas.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const { cx, cy } = toCanvas(e);
+  drag.body.px[drag.idx] = cx;
+  drag.body.py[drag.idx] = cy;
+  drag.body.ox[drag.idx] = cx;
+  drag.body.oy[drag.idx] = cy;
+});
+
+canvas.addEventListener('pointerup', () => {
+  if (drag) { drag.body.fixed[drag.idx] = 0; drag = null; }
+});
+
+// ─── buttons ──────────────────────────────────────────────────────────────────
+document.getElementById('btnReset').addEventListener('click', resetWorld);
+
+document.getElementById('btnAdd').addEventListener('click', () => {
+  const W = canvas.width, H = canvas.height;
+  spawnBody(
+    W * 0.2 + Math.random() * W * 0.6,
+    H * 0.2 + Math.random() * H * 0.3,
+  );
+});
+
+document.getElementById('btnGravOff').addEventListener('click', () => {
+  P.gravSign *= -1;
+  document.getElementById('btnGravOff').textContent = P.gravSign > 0 ? 'Gravity ↕' : 'Gravity ↑';
+});
+
+// ─── node count re-spawn on change ───────────────────────────────────────────
+document.getElementById('sNodes').addEventListener('change', () => {
+  const newBodies = [];
+  for (const b of bodies) {
+    // compute centroid
+    let cx = 0, cy = 0;
+    for (let i = 0; i < b.n; i++) { cx += b.px[i]; cy += b.py[i]; }
+    cx /= b.n; cy /= b.n;
+    newBodies.push(new SoftBody(cx, cy, b.radius, P.nodes, b.hue));
+  }
+  bodies = newBodies;
+});
+
+// ─── render loop ──────────────────────────────────────────────────────────────
+let last = 0;
+const FPS = 60;
+const MS  = 1000 / FPS;
+
+function frame(ts) {
+  requestAnimationFrame(frame);
+  if (ts - last < MS - 1) return;
+  last = ts;
+
+  const W = canvas.width, H = canvas.height;
+  const dt = 1;   // fixed timestep
+
+  // clear
+  ctx.clearRect(0, 0, W, H);
+
+  // subtle grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth   = 1;
+  const GRID = 60;
+  for (let x = 0; x < W; x += GRID) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += GRID) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  // floor line
+  ctx.strokeStyle = 'rgba(100,140,220,0.15)';
+  ctx.lineWidth   = 2;
+  ctx.beginPath(); ctx.moveTo(0, H - 2); ctx.lineTo(W, H - 2); ctx.stroke();
+
+  // simulate + draw
+  for (const body of bodies) {
+    body.step(dt);
+    body.draw(ctx);
+  }
+
+  // inter-body collision (simple push-apart for each pair of nodes)
+  for (let a = 0; a < bodies.length; a++) {
+    for (let b = a + 1; b < bodies.length; b++) {
+      const ba = bodies[a], bb = bodies[b];
+      const MIN_D = 6 * devicePixelRatio;
+      for (let i = 0; i < ba.n; i++) {
+        for (let j = 0; j < bb.n; j++) {
+          const dx = bb.px[j] - ba.px[i];
+          const dy = bb.py[j] - ba.py[i];
+          const d2 = dx * dx + dy * dy;
+          if (d2 < MIN_D * MIN_D && d2 > 0) {
+            const d    = Math.sqrt(d2);
+            const push = (MIN_D - d) / d * 0.5;
+            if (!ba.fixed[i]) { ba.px[i] -= dx * push; ba.py[i] -= dy * push; }
+            if (!bb.fixed[j]) { bb.px[j] += dx * push; bb.py[j] += dy * push; }
+          }
+        }
+      }
+    }
+  }
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
