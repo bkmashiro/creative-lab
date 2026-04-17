@@ -64,6 +64,7 @@
 | [040](demos/040-fluid-dynamics.html) | Fluid Dynamics | WebGL2, Navier-Stokes, vorticity confinement |
 | [041](demos/041-rope-physics.html) | Rope Physics | Canvas 2D, Verlet integration, distance constraints, mouse drag |
 | [042](demos/042-soft-body.html) | Soft Body | Canvas 2D, pressure-based deformable blobs, spring constraints, Verlet |
+| [043](demos/043-wave-equation.html) | Wave Equation | WebGL2, 2D membrane PDE, finite differences, interference patterns |
 
 *More coming every 2 days →*
 
