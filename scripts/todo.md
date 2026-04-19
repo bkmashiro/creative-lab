@@ -48,7 +48,7 @@
 - [x] 041 Rope Physics (verlet constraints, hanging + mouse drag)
 - [x] 042 Soft Body (pressure-based deformable circle, springs)
 - [x] 043 Wave Equation (2D membrane PDE solver, real-time)
-- [ ] 044 Gravity Lensing (Einstein ring, WebGL GLSL)
+- [x] 044 Gravity Lensing (Einstein ring, WebGL GLSL)
 - [ ] 045 N-Body Gravity (Barnes-Hut tree, thousands of particles)
 - [ ] 046 Terrain Erosion (hydraulic erosion on heightmap)
 - [ ] 047 Smoke + Wind (velocity field advection, canvas)

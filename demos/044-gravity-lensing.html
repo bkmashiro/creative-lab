@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#044 Gravity Lensing — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e0e8ff}
+canvas{display:block;width:100vw;height:100vh;cursor:crosshair}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(0,0,0,0.65);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:14px 16px;min-width:225px;font-size:0.82rem}
+h1{font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase;color:#6a7a9a;margin-bottom:11px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.row label{width:92px;color:#c0c8e0;flex-shrink:0;font-size:0.79rem}
+.row input[type=range]{flex:1;accent-color:#ffa44f;cursor:pointer}
+.val{width:38px;text-align:right;color:#ffa44f;font-size:0.74rem;font-variant-numeric:tabular-nums}
+.ck-row{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+.ck-row input{accent-color:#ffa44f;cursor:pointer;width:13px;height:13px;flex-shrink:0}
+.ck-row label{color:#c0c8e0;font-size:0.79rem;cursor:pointer}
+.sep{margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.07)}
+.btn-row{display:flex;gap:5px;margin-top:8px}
+button{flex:1;background:rgba(255,164,79,0.1);border:1px solid rgba(255,164,79,0.22);color:#ffa44f;border-radius:6px;padding:5px 3px;font-size:0.74rem;cursor:pointer;transition:background .15s}
+button:hover{background:rgba(255,164,79,0.22)}
+button.active{background:rgba(255,164,79,0.3);border-color:rgba(255,164,79,0.5)}
+.note{font-size:0.67rem;color:#4a5a7a;line-height:1.5;margin-top:6px}
+#hint{position:fixed;bottom:14px;left:16px;color:rgba(180,210,255,0.28);font-size:0.7rem;pointer-events:none}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.22);font-size:0.7rem}
+footer a{color:rgba(255,255,255,0.3);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.6)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <h1>044 · Gravity Lensing</h1>
+  <div class="row"><label>Einstein R</label><input type="range" id="s-er" min="2" max="28" value="11" step="0.5"><span class="val" id="v-er">0.11</span></div>
+  <div class="row"><label>Mass Scale</label><input type="range" id="s-ms" min="3" max="30" value="10" step="1"><span class="val" id="v-ms">1.0×</span></div>
+  <div class="row"><label>Galaxy Size</label><input type="range" id="s-gs" min="3" max="25" value="9" step="1"><span class="val" id="v-gs">0.9</span></div>
+  <hr class="sep">
+  <div class="ck-row"><input type="checkbox" id="cb-ring" checked><label for="cb-ring">Einstein ring guide</label></div>
+  <div class="ck-row"><input type="checkbox" id="cb-disk" checked><label for="cb-disk">Accretion disk</label></div>
+  <div class="ck-row"><input type="checkbox" id="cb-mag" checked><label for="cb-mag">Magnification</label></div>
+  <div class="btn-row">
+    <button id="btn-center">Center</button>
+    <button id="btn-orbit">Orbit</button>
+    <button id="btn-source">Move Source</button>
+  </div>
+  <div class="note">θ<sub>E</sub> = Einstein radius<br>Lens: <span id="lpos">0.50, 0.50</span></div>
+</div>
+<div id="hint">Click / drag to move the gravitational lens</div>
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 044</footer>
+<script>
+'use strict';
+
+const canvas = document.getElementById('c');
+let W = canvas.width = window.innerWidth;
+let H = canvas.height = window.innerHeight;
+
+const gl = canvas.getContext('webgl');
+if (!gl) {
+  document.body.innerHTML = '<p style="color:#f88;padding:2em">WebGL not supported.</p>';
+  throw 0;
+}
+
+/* ── Shaders ────────────────────────────────────────────────────────────── */
+const VS = `
+attribute vec2 aPos;
+void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }
+`;
+
+const FS = `
+precision highp float;
+uniform vec2  uRes;
+uniform vec2  uLens;       // lens UV [0,1]
+uniform vec2  uSource;     // galaxy center UV [0,1]
+uniform float uER;         // Einstein radius (normalized screen height frac)
+uniform float uMass;       // mass scale multiplier
+uniform float uGalScale;   // galaxy angular scale
+uniform float uTime;
+uniform int   uShowRing;
+uniform int   uShowDisk;
+uniform int   uShowMag;
+
+/* ── Hash / noise ── */
+float hash(vec2 p){
+  p = fract(p * vec2(127.1, 311.7));
+  p += dot(p, p + 19.19);
+  return fract(p.x * p.y);
+}
+vec2 hash2(vec2 p){ return vec2(hash(p), hash(p + vec2(7.31, 3.71))); }
+
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  float a = hash(i), b = hash(i+vec2(1,0)), c = hash(i+vec2(0,1)), d = hash(i+vec2(1,1));
+  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+}
+
+float fbm(vec2 p){
+  float v=0.0, a=0.5;
+  for(int i=0;i<4;i++){ v+=a*vnoise(p); p=p*2.1+vec2(3.14,1.62); a*=0.5; }
+  return v;
+}
+
+/* ── Procedural background ── */
+vec3 background(vec2 uv, vec2 srcUV, float galScale){
+  vec3 col = vec3(0.003, 0.004, 0.016);   // deep space
+
+  /* nebula clouds */
+  float n1 = fbm(uv*3.0 + vec2(1.2, 3.4));
+  float n2 = fbm(uv*4.0 - vec2(2.3, 0.7));
+  col += vec3(0.035, 0.05, 0.18) * n1*n1;
+  col += vec3(0.08,  0.02, 0.12) * n2*n2;
+
+  /* Milky Way band */
+  float band = exp(-((uv.y-0.5)*5.5)*((uv.y-0.5)*5.5));
+  float mw   = fbm(uv*7.0 + vec2(10.0, 0.0))*0.5+0.5;
+  col += vec3(0.06, 0.05, 0.13) * band * mw;
+
+  /* dim background stars */
+  {
+    float sc = 220.0;
+    vec2 cell = floor(uv*sc), fr = fract(uv*sc);
+    for(int dy=0;dy<=1;dy++){
+      for(int dx=0;dx<=1;dx++){
+        vec2 nc = cell + vec2(float(dx), float(dy));
+        float h  = hash(nc);
+        vec2 sp  = hash2(nc + 0.11);
+        vec2 d   = fr - sp - vec2(float(dx), float(dy));
+        float st = exp(-dot(d,d)*5500.0) * smoothstep(0.09,0.0,h) * 1.6;
+        float ct = hash(nc+0.55);
+        col += st * mix(vec3(0.8,0.9,1.0), vec3(1.0,0.85,0.55), ct);
+      }
+    }
+  }
+
+  /* bright stars with diffraction spikes */
+  {
+    float sc = 55.0;
+    vec2 cell = floor(uv*sc), fr = fract(uv*sc);
+    for(int dy=0;dy<=1;dy++){
+      for(int dx=0;dx<=1;dx++){
+        vec2 nc = cell + vec2(float(dx), float(dy)) + vec2(50.0);
+        float h  = hash(nc);
+        if(h > 0.045) continue;
+        vec2 sp  = hash2(nc + 0.12);
+        vec2 d   = fr - sp - vec2(float(dx), float(dy));
+        float r  = length(d);
+        float core  = exp(-r*r*600.0) * (2.8 - h*40.0);
+        float spike = (exp(-abs(d.x)*90.0) + exp(-abs(d.y)*90.0)) * exp(-r*35.0) * 0.4;
+        float ct    = hash(nc + 0.77);
+        vec3 sc2 = mix(vec3(0.65,0.8,1.0), vec3(1.0,0.92,0.65), ct);
+        if(ct > 0.83) sc2 = vec3(1.0, 0.45, 0.25);  /* red giant */
+        col += (core + spike) * sc2;
+      }
+    }
+  }
+
+  /* source galaxy */
+  vec2  gv  = (uv - srcUV) * galScale;
+  float gr  = length(gv);
+  float ang = atan(gv.y, gv.x);
+
+  /* core */
+  float gcore = exp(-gr*gr*9.0) * 22.0;
+  /* disk */
+  float gdisk = exp(-gr*1.6) * 0.55;
+  /* two spiral arms */
+  float a1 = mod(ang + gr*3.2 + 3.14159, 6.28318) - 3.14159;
+  float a2 = mod(ang + gr*3.2,            6.28318) - 3.14159;
+  float arm1 = exp(-a1*a1*5.0) * exp(-gr*0.9) * 0.85;
+  float arm2 = exp(-a2*a2*5.0) * exp(-gr*0.9) * 0.85;
+
+  float glow = gcore + gdisk + arm1 + arm2;
+  vec3 gcol  = mix(vec3(1.0, 0.97, 0.82), vec3(0.55, 0.6, 1.0), smoothstep(0.0, 2.2, gr));
+  gcol = mix(gcol, vec3(0.9, 0.72, 1.0), smoothstep(1.2, 4.5, gr)*0.5);
+  col += glow * gcol;
+
+  return col;
+}
+
+void main(){
+  vec2  uv     = gl_FragCoord.xy / uRes.xy;
+  float aspect = uRes.x / uRes.y;
+
+  /* aspect-corrected displacement from lens */
+  vec2 theta = (uv - uLens) * vec2(aspect, 1.0);
+  float r    = length(theta);
+
+  /* effective Einstein radius */
+  float eR  = uER * uMass;
+  float eR2 = eR * eR;
+
+  /* gravitational deflection: α = θ_E² · θ / |θ|²  */
+  float r2   = max(r*r, eR2 * 0.0008);
+  vec2  alpha = eR2 * theta / r2;
+  vec2  beta  = theta - alpha;
+
+  /* source UV */
+  vec2 srcUV = uLens + beta / vec2(aspect, 1.0);
+
+  /* sample background */
+  vec3 col = background(srcUV, uSource, uGalScale);
+
+  /* optional lensing magnification: μ ≈ rn⁴ / |rn⁴ − 1| */
+  if(uShowMag == 1){
+    float rn  = r / max(eR, 0.001);
+    float rn4 = rn*rn*rn*rn;
+    float mag = rn4 / max(abs(rn4 - 1.0), 0.025);
+    col *= min(mag, 60.0);
+  }
+
+  /* black hole shadow */
+  float bhR  = eR * 0.26;
+  float fade = smoothstep(bhR, bhR*1.8, r);
+  col *= fade;
+
+  /* accretion disk */
+  if(uShowDisk == 1){
+    float dR    = eR * 0.38;
+    float dW    = eR * 0.22;
+    float dglow = exp(-pow(r - dR, 2.0)/(dW*dW)) * (1.0 - smoothstep(0.0, bhR*0.85, r));
+    float ang2  = atan(theta.y, theta.x);
+    float dop   = cos(ang2 + uTime*0.4)*0.38 + 1.0;   /* simple Doppler tilt */
+    vec3 dcol   = mix(vec3(1.0, 0.55, 0.1), vec3(1.0, 0.97, 0.75), smoothstep(0.0, dR*0.6, r));
+    col += dglow * dcol * dop * 5.5;
+  }
+
+  /* Einstein ring guide */
+  if(uShowRing == 1){
+    float rd  = abs(r - eR);
+    float ring = exp(-rd*rd / (eR*eR*0.0028));
+    col += ring * vec3(0.45, 0.65, 1.0) * 0.75;
+  }
+
+  /* tone map + gamma */
+  col  = col / (col + 1.0);
+  col  = pow(col, vec3(0.4545));
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+/* ── GL setup ─────────────────────────────────────────────────────────── */
+function mkShader(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+    console.error('Shader:', gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, mkShader(gl.VERTEX_SHADER,   VS));
+gl.attachShader(prog, mkShader(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog);
+if(!gl.getProgramParameter(prog, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, 'aPos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+const U = {
+  res:    gl.getUniformLocation(prog, 'uRes'),
+  lens:   gl.getUniformLocation(prog, 'uLens'),
+  source: gl.getUniformLocation(prog, 'uSource'),
+  er:     gl.getUniformLocation(prog, 'uER'),
+  mass:   gl.getUniformLocation(prog, 'uMass'),
+  gs:     gl.getUniformLocation(prog, 'uGalScale'),
+  time:   gl.getUniformLocation(prog, 'uTime'),
+  ring:   gl.getUniformLocation(prog, 'uShowRing'),
+  disk:   gl.getUniformLocation(prog, 'uShowDisk'),
+  mag:    gl.getUniformLocation(prog, 'uShowMag'),
+};
+
+/* ── State ─────────────────────────────────────────────────────────────── */
+const S = {
+  lensX: 0.5, lensY: 0.5,
+  srcX:  0.5, srcY:  0.5,    // source galaxy center
+  er:    0.11,
+  mass:  1.0,
+  galScale: 0.9,
+  orbit: false,
+  moveSrc: false,
+  time: 0,
+};
+
+/* ── UI wiring ─────────────────────────────────────────────────────────── */
+const lposEl = document.getElementById('lpos');
+function updateLposText(){ lposEl.textContent = S.lensX.toFixed(2)+', '+S.lensY.toFixed(2); }
+
+const slER = document.getElementById('s-er');
+const vlER = document.getElementById('v-er');
+slER.addEventListener('input', () => {
+  S.er = parseFloat(slER.value)/100;
+  vlER.textContent = S.er.toFixed(2);
+});
+
+const slMS = document.getElementById('s-ms');
+const vlMS = document.getElementById('v-ms');
+slMS.addEventListener('input', () => {
+  S.mass = parseFloat(slMS.value)/10;
+  vlMS.textContent = S.mass.toFixed(1)+'×';
+});
+
+const slGS = document.getElementById('s-gs');
+const vlGS = document.getElementById('v-gs');
+slGS.addEventListener('input', () => {
+  S.galScale = parseFloat(slGS.value)/10;
+  vlGS.textContent = S.galScale.toFixed(1);
+});
+
+const cbRing = document.getElementById('cb-ring');
+const cbDisk = document.getElementById('cb-disk');
+const cbMag  = document.getElementById('cb-mag');
+
+const btnOrbit  = document.getElementById('btn-orbit');
+const btnSrc    = document.getElementById('btn-source');
+
+document.getElementById('btn-center').addEventListener('click', () => {
+  S.lensX = 0.5; S.lensY = 0.5; updateLposText();
+});
+btnOrbit.addEventListener('click', () => {
+  S.orbit = !S.orbit;
+  btnOrbit.classList.toggle('active', S.orbit);
+});
+btnSrc.addEventListener('click', () => {
+  S.moveSrc = !S.moveSrc;
+  btnSrc.classList.toggle('active', S.moveSrc);
+  document.getElementById('hint').textContent =
+    S.moveSrc ? 'Drag to move the background galaxy source' : 'Click / drag to move the gravitational lens';
+});
+
+/* ── Interaction ───────────────────────────────────────────────────────── */
+let dragging = false;
+
+function applyMove(x, y){
+  const nx = x / W;
+  const ny = 1 - y / H;
+  if(S.moveSrc){ S.srcX = nx; S.srcY = ny; }
+  else { S.lensX = nx; S.lensY = ny; updateLposText(); }
+}
+
+canvas.addEventListener('mousedown', e => { dragging=true; applyMove(e.clientX, e.clientY); });
+canvas.addEventListener('mousemove', e => { if(dragging) applyMove(e.clientX, e.clientY); });
+window.addEventListener('mouseup',   () => { dragging=false; });
+canvas.addEventListener('touchstart', e => { e.preventDefault(); applyMove(e.touches[0].clientX, e.touches[0].clientY); },{passive:false});
+canvas.addEventListener('touchmove',  e => { e.preventDefault(); applyMove(e.touches[0].clientX, e.touches[0].clientY); },{passive:false});
+
+/* ── Resize ────────────────────────────────────────────────────────────── */
+window.addEventListener('resize', () => {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  gl.viewport(0, 0, W, H);
+});
+gl.viewport(0, 0, W, H);
+
+/* ── Render loop ───────────────────────────────────────────────────────── */
+let last = 0;
+function frame(t){
+  const dt = Math.min((t - last) * 0.001, 0.05);
+  S.time += dt;
+  last = t;
+
+  if(S.orbit){
+    const a = S.time * 0.35;
+    S.lensX = 0.5 + Math.cos(a)        * 0.20;
+    S.lensY = 0.5 + Math.sin(a * 0.73) * 0.13;
+    updateLposText();
+  }
+
+  gl.uniform2f(U.res,    W, H);
+  gl.uniform2f(U.lens,   S.lensX, S.lensY);
+  gl.uniform2f(U.source, S.srcX,  S.srcY);
+  gl.uniform1f(U.er,     S.er);
+  gl.uniform1f(U.mass,   S.mass);
+  gl.uniform1f(U.gs,     S.galScale);
+  gl.uniform1f(U.time,   S.time);
+  gl.uniform1i(U.ring,   cbRing.checked ? 1 : 0);
+  gl.uniform1i(U.disk,   cbDisk.checked ? 1 : 0);
+  gl.uniform1i(U.mag,    cbMag.checked  ? 1 : 0);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
