@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#046 Terrain Erosion — creative-lab</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0c0f;
+    color: #e6edf3;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    overflow: hidden;
+  }
+
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    position: fixed;
+    top: 0; left: 0;
+    cursor: crosshair;
+  }
+
+  #ui {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: rgba(8, 12, 18, 0.72);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(120, 180, 140, 0.18);
+    border-radius: 12px;
+    padding: 14px 16px;
+    min-width: 220px;
+  }
+
+  #ui h1 {
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #7ec8a0;
+    margin-bottom: 2px;
+  }
+
+  #ui .subtitle {
+    font-size: 0.65rem;
+    color: #4a6058;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.68rem;
+  }
+
+  .row label {
+    width: 90px;
+    color: #7a9a88;
+    flex-shrink: 0;
+  }
+
+  .row input[type=range] {
+    flex: 1;
+    accent-color: #7ec8a0;
+    cursor: pointer;
+    height: 3px;
+  }
+
+  .row span {
+    width: 40px;
+    text-align: right;
+    color: #b0d4be;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .row input[type=checkbox] {
+    accent-color: #7ec8a0;
+    cursor: pointer;
+    width: 13px; height: 13px;
+  }
+
+  .sep {
+    border: none;
+    border-top: 1px solid rgba(120, 180, 140, 0.1);
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 6px;
+  }
+
+  .btn {
+    flex: 1;
+    background: rgba(126, 200, 160, 0.08);
+    border: 1px solid rgba(126, 200, 160, 0.22);
+    color: #8ecfac;
+    border-radius: 7px;
+    padding: 5px 8px;
+    font-size: 0.68rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    letter-spacing: 0.04em;
+  }
+
+  .btn:hover {
+    background: rgba(126, 200, 160, 0.18);
+    border-color: rgba(126, 200, 160, 0.4);
+  }
+
+  .btn.active {
+    background: rgba(126, 200, 160, 0.22);
+    border-color: rgba(126, 200, 160, 0.5);
+    color: #aee4c4;
+  }
+
+  #stats {
+    font-size: 0.62rem;
+    color: #3a5548;
+    letter-spacing: 0.05em;
+    line-height: 1.6;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #footer {
+    position: fixed;
+    bottom: 12px;
+    right: 16px;
+    font-size: 0.65rem;
+    color: #2a3830;
+    z-index: 10;
+    letter-spacing: 0.04em;
+  }
+
+  #footer a {
+    color: #3a5848;
+    text-decoration: none;
+  }
+
+  #footer a:hover { color: #7ec8a0; }
+
+  #legend {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    background: rgba(8, 12, 18, 0.65);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(120, 180, 140, 0.12);
+    border-radius: 9px;
+    padding: 9px 12px;
+  }
+
+  #legend .leg-title {
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #4a6a58;
+    margin-bottom: 3px;
+  }
+
+  .leg-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.62rem;
+    color: #6a8a78;
+  }
+
+  .swatch {
+    width: 26px;
+    height: 8px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <h1>046 · Terrain Erosion</h1>
+  <div class="subtitle">hydraulic droplet simulation</div>
+
+  <hr class="sep">
+
+  <div class="row">
+    <label>Inertia</label>
+    <input type="range" id="inertia" min="0.01" max="0.95" step="0.01" value="0.25">
+    <span id="v-inertia">0.25</span>
+  </div>
+  <div class="row">
+    <label>Erosion radius</label>
+    <input type="range" id="radius" min="1" max="8" step="1" value="3">
+    <span id="v-radius">3</span>
+  </div>
+  <div class="row">
+    <label>Erode speed</label>
+    <input type="range" id="erode" min="0.01" max="0.9" step="0.01" value="0.28">
+    <span id="v-erode">0.28</span>
+  </div>
+  <div class="row">
+    <label>Deposit speed</label>
+    <input type="range" id="deposit" min="0.01" max="0.9" step="0.01" value="0.25">
+    <span id="v-deposit">0.25</span>
+  </div>
+  <div class="row">
+    <label>Evaporate</label>
+    <input type="range" id="evaporate" min="0.001" max="0.04" step="0.001" value="0.012">
+    <span id="v-evaporate">0.012</span>
+  </div>
+  <div class="row">
+    <label>Sed. capacity</label>
+    <input type="range" id="capacity" min="1" max="24" step="0.5" value="8">
+    <span id="v-capacity">8.0</span>
+  </div>
+  <div class="row">
+    <label>Drops / frame</label>
+    <input type="range" id="speed" min="200" max="6000" step="200" value="2000">
+    <span id="v-speed">2000</span>
+  </div>
+
+  <hr class="sep">
+
+  <div class="row">
+    <label>Show water</label>
+    <input type="checkbox" id="showWater" checked>
+  </div>
+  <div class="row">
+    <label>Hillshade</label>
+    <input type="checkbox" id="hillshade" checked>
+  </div>
+
+  <hr class="sep">
+
+  <div class="btn-row">
+    <button class="btn active" id="toggleBtn">⏸ Pause</button>
+    <button class="btn" id="resetBtn">↺ New Terrain</button>
+  </div>
+
+  <div id="stats">
+    drops: 0<br>
+    rate: – k/s
+  </div>
+</div>
+
+<div id="legend">
+  <div class="leg-title">Elevation</div>
+  <div class="leg-row"><div class="swatch" style="background:linear-gradient(90deg,#0e2035,#1a6090)"></div>Deep ocean</div>
+  <div class="leg-row"><div class="swatch" style="background:linear-gradient(90deg,#1a6090,#60b8d0)"></div>Shallow water</div>
+  <div class="leg-row"><div class="swatch" style="background:linear-gradient(90deg,#c8ad72,#c0b890)"></div>Beach / sand</div>
+  <div class="leg-row"><div class="swatch" style="background:linear-gradient(90deg,#5a8040,#3d6030)"></div>Lowland / forest</div>
+  <div class="leg-row"><div class="swatch" style="background:linear-gradient(90deg,#7a7060,#908070)"></div>Highlands / rock</div>
+  <div class="leg-row"><div class="swatch" style="background:linear-gradient(90deg,#c8d4e0,#ffffff)"></div>Snow / peak</div>
+</div>
+
+<div id="footer">
+  <a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 046
+</div>
+
+<script>
+'use strict';
+
+// ─── Canvas ───────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── Map ──────────────────────────────────────────────────────────────────────
+const N = 256;          // heightmap resolution
+
+let heightMap = new Float32Array(N * N);
+let brushX    = new Int32Array(0);    // erosion brush x-offsets
+let brushY    = new Int32Array(0);    // erosion brush y-offsets
+let brushW    = new Float32Array(0);  // erosion brush weights (normalised)
+
+// ─── Params ───────────────────────────────────────────────────────────────────
+const P = {
+  inertia:  0.25,
+  radius:   3,
+  erode:    0.28,
+  deposit:  0.25,
+  evaporate:0.012,
+  capacity: 8.0,
+  gravity:  4.0,
+  minSlope: 0.01,
+  maxSteps: 64,
+  speed:    2000,
+  running:  true,
+  showWater:true,
+  hillshade:true,
+};
+
+// ─── Noise (seeded value noise + fBm) ─────────────────────────────────────────
+function hash2(x, y, s) {
+  let h = (Math.imul(x, 1619) ^ Math.imul(y, 31337) ^ Math.imul(s, 1013904223)) | 0;
+  h ^= h >> 13;
+  h  = (Math.imul(h, Math.imul(h, h) * 15731 + 789221) + 1376312589) | 0;
+  return (h & 0x7fffffff) / 0x7fffffff;
+}
+
+function vnoise(x, y, s) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix,        fy = y - iy;
+  const ux = fx * fx * (3 - 2 * fx);
+  const uy = fy * fy * (3 - 2 * fy);
+  const a  = hash2(ix,   iy,   s);
+  const b  = hash2(ix+1, iy,   s);
+  const c  = hash2(ix,   iy+1, s);
+  const d  = hash2(ix+1, iy+1, s);
+  return a + (b-a)*ux + (c-a)*uy + (a-b-c+d)*ux*uy;
+}
+
+function fbm(x, y, octs, s) {
+  let v = 0, amp = 0.5, frq = 1, maxA = 0;
+  for (let i = 0; i < octs; i++) {
+    v    += amp * vnoise(x * frq, y * frq, s + i * 127);
+    maxA += amp;
+    amp  *= 0.5;
+    frq  *= 2.0;
+  }
+  return v / maxA;
+}
+
+// ─── Terrain generation ───────────────────────────────────────────────────────
+let seed = (Math.random() * 0xffff) | 0;
+let totalDrops = 0;
+
+function generateTerrain() {
+  seed = (Math.random() * 0xffff) | 0;
+  totalDrops = 0;
+  const scale = 3.5;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const nx = x / N * scale;
+      const ny = y / N * scale;
+
+      let h = fbm(nx, ny, 9, seed);
+
+      // ridge noise for sharper mountain ridges
+      const ridge = fbm(nx * 0.7, ny * 0.7 + 100, 5, seed + 512);
+      h = h * 0.7 + (1 - Math.abs(ridge * 2 - 1)) * 0.3;
+
+      // island mask — higher in centre, sea at edges
+      const dx = (x / N - 0.5) * 2;
+      const dy = (y / N - 0.5) * 2;
+      const r  = Math.sqrt(dx*dx + dy*dy);
+      const mask = Math.max(0, 1 - Math.pow(r, 1.8));
+      h = h * 0.6 + mask * 0.4;
+
+      heightMap[y * N + x] = Math.max(0, Math.min(1, h));
+    }
+  }
+}
+
+// ─── Erosion brush ────────────────────────────────────────────────────────────
+function buildBrush(radius) {
+  const tmp = [];
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const d = Math.sqrt(dx*dx + dy*dy);
+      if (d <= radius) {
+        tmp.push({ dx, dy, w: 1 - d / radius });
+      }
+    }
+  }
+  const total = tmp.reduce((s, t) => s + t.w, 0);
+  brushX = new Int32Array(tmp.length);
+  brushY = new Int32Array(tmp.length);
+  brushW = new Float32Array(tmp.length);
+  tmp.forEach((t, i) => {
+    brushX[i] = t.dx;
+    brushY[i] = t.dy;
+    brushW[i] = t.w / total;
+  });
+}
+
+// ─── Bilinear height / gradient ───────────────────────────────────────────────
+function getH(x, y) {
+  const ix = x | 0, iy = y | 0;
+  if (ix < 0 || ix >= N-1 || iy < 0 || iy >= N-1) return 0;
+  const fx = x - ix, fy = y - iy;
+  const h00 = heightMap[iy*N + ix];
+  const h10 = heightMap[iy*N + ix+1];
+  const h01 = heightMap[(iy+1)*N + ix];
+  const h11 = heightMap[(iy+1)*N + ix+1];
+  return h00 + (h10-h00)*fx + (h01-h00)*fy + (h00-h10-h01+h11)*fx*fy;
+}
+
+function getGrad(x, y) {
+  const ix = x | 0, iy = y | 0;
+  if (ix < 0 || ix >= N-1 || iy < 0 || iy >= N-1) return [0, 0];
+  const fx = x - ix, fy = y - iy;
+  const h00 = heightMap[iy*N + ix];
+  const h10 = heightMap[iy*N + ix+1];
+  const h01 = heightMap[(iy+1)*N + ix];
+  const h11 = heightMap[(iy+1)*N + ix+1];
+  const gx  = (h10-h00)*(1-fy) + (h11-h01)*fy;
+  const gy  = (h01-h00)*(1-fx) + (h11-h10)*fx;
+  return [gx, gy];
+}
+
+// ─── Hydraulic erosion (Beyer 2016) ──────────────────────────────────────────
+function simulateDroplets(count) {
+  const { inertia, erode, deposit: dep, evaporate, capacity, gravity,
+          minSlope, maxSteps } = P;
+
+  for (let d = 0; d < count; d++) {
+    let px = Math.random() * (N-2) + 1;
+    let py = Math.random() * (N-2) + 1;
+    let vx = 0, vy = 0;
+    let spd = 1.0, water = 1.0, sed = 0;
+
+    for (let s = 0; s < maxSteps; s++) {
+      const [gx, gy] = getGrad(px, py);
+
+      vx = vx * inertia - gx * (1 - inertia);
+      vy = vy * inertia - gy * (1 - inertia);
+
+      const len = Math.sqrt(vx*vx + vy*vy);
+      if (len < 1e-7) break;
+      vx /= len; vy /= len;
+
+      const ox = px, oy = py;
+      px += vx; py += vy;
+
+      if (px < 1 || px > N-2 || py < 1 || py > N-2) break;
+
+      const dH   = getH(px, py) - getH(ox, oy);
+      const cap  = Math.max(-dH, minSlope) * spd * water * capacity;
+
+      if (sed > cap || dH > 0) {
+        // Deposit
+        const amt = dH > 0
+          ? Math.min(dH, sed)
+          : (sed - cap) * dep;
+        sed -= amt;
+
+        const ix = ox | 0, iy = oy | 0;
+        const fx = ox - ix, fy = oy - iy;
+        if (ix >= 0 && ix < N-1 && iy >= 0 && iy < N-1) {
+          heightMap[iy*N+ix]     = Math.min(1, heightMap[iy*N+ix]     + amt*(1-fx)*(1-fy));
+          heightMap[iy*N+ix+1]   = Math.min(1, heightMap[iy*N+ix+1]   + amt*fx*(1-fy));
+          heightMap[(iy+1)*N+ix] = Math.min(1, heightMap[(iy+1)*N+ix] + amt*(1-fx)*fy);
+          heightMap[(iy+1)*N+ix+1] = Math.min(1, heightMap[(iy+1)*N+ix+1] + amt*fx*fy);
+        }
+      } else {
+        // Erode
+        const amt = Math.min((cap - sed) * erode, -dH);
+        sed += amt;
+
+        const ix = ox | 0, iy = oy | 0;
+        const blen = brushX.length;
+        for (let bi = 0; bi < blen; bi++) {
+          const bx = ix + brushX[bi];
+          const by = iy + brushY[bi];
+          if (bx >= 0 && bx < N && by >= 0 && by < N) {
+            heightMap[by*N+bx] = Math.max(0, heightMap[by*N+bx] - brushW[bi] * amt);
+          }
+        }
+      }
+
+      spd   = Math.sqrt(Math.max(0, spd*spd + dH * gravity));
+      water *= (1 - evaporate);
+      if (water < 0.005) break;
+    }
+  }
+  totalDrops += count;
+}
+
+// ─── Rendering ────────────────────────────────────────────────────────────────
+const offscreen = document.createElement('canvas');
+offscreen.width  = N;
+offscreen.height = N;
+const octx = offscreen.getContext('2d');
+const img  = octx.createImageData(N, N);
+const px   = img.data;
+
+const WATER = 0.36;  // sea level threshold
+
+// Interpolate between two [r,g,b] colours
+function lerpRGB(a, b, t) {
+  return [
+    a[0] + (b[0]-a[0])*t | 0,
+    a[1] + (b[1]-a[1])*t | 0,
+    a[2] + (b[2]-a[2])*t | 0,
+  ];
+}
+
+// Terrain colour ramp
+function elevColor(h) {
+  if (!P.showWater && h < WATER) h = WATER + 0.001;
+
+  if (h < 0.22)           return lerpRGB([10,20,48],   [18,60,110],  h / 0.22);
+  if (h < WATER)          return lerpRGB([18,60,110],  [38,130,170], (h-0.22)/(WATER-0.22));
+  if (h < WATER+0.04)     return lerpRGB([38,130,170], [60,180,210], (h-WATER)/0.04);  // shore
+  if (h < 0.42)           return lerpRGB([200,185,135],[192,178,118],(h-WATER-0.04)/0.02);  // sand
+  if (h < 0.58)           return lerpRGB([90,138,68],  [64,108,50],  (h-0.42)/0.16);  // grass
+  if (h < 0.72)           return lerpRGB([64,108,50],  [90,108,78],  (h-0.58)/0.14);  // forest
+  if (h < 0.86)           return lerpRGB([110,100,88], [138,128,116],(h-0.72)/0.14);  // rock
+  return                         lerpRGB([140,148,160],[245,250,255],(h-0.86)/0.14);   // snow
+}
+
+function renderTerrain() {
+  const lx = 0.55, ly = -0.40, lz = 0.73;  // light dir (normalised)
+  const ll = Math.sqrt(lx*lx+ly*ly+lz*lz);
+  const LX = lx/ll, LY = ly/ll, LZ = lz/ll;
+  const doShade = P.hillshade;
+  const scale   = 9.0;  // vertical exaggeration for normals
+
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const h = heightMap[y*N+x];
+      const [r0, g0, b0] = elevColor(h);
+
+      let shade = 1.0;
+      if (doShade) {
+        const hL = x > 0     ? heightMap[y*N+x-1] : h;
+        const hR = x < N-1   ? heightMap[y*N+x+1] : h;
+        const hU = y > 0     ? heightMap[(y-1)*N+x] : h;
+        const hD = y < N-1   ? heightMap[(y+1)*N+x] : h;
+
+        let nx = (hL-hR) * scale;
+        let ny = (hU-hD) * scale;
+        let nz = 2.0;
+        const nl = Math.sqrt(nx*nx+ny*ny+nz*nz);
+        nx /= nl; ny /= nl; nz /= nl;
+
+        const diff = Math.max(0, nx*LX + ny*LY + nz*LZ);
+        shade = 0.20 + diff * 0.80;
+
+        // wet canyon darkening for eroded valleys
+        if (h > WATER && h < 0.65) {
+          const slope = 1.0 - nz;
+          shade -= slope * 0.08;
+        }
+      }
+
+      const i = (y*N+x)*4;
+      px[i]   = Math.min(255, r0 * shade) | 0;
+      px[i+1] = Math.min(255, g0 * shade) | 0;
+      px[i+2] = Math.min(255, b0 * shade) | 0;
+      px[i+3] = 255;
+    }
+  }
+
+  octx.putImageData(img, 0, 0);
+
+  // Stretch to fill viewport, keeping aspect
+  const side = Math.min(W, H);
+  const ox = (W - side) * 0.5;
+  const oy = (H - side) * 0.5;
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(offscreen, ox, oy, side, side);
+}
+
+// ─── Mouse — click to drop extra water ────────────────────────────────────────
+canvas.addEventListener('mousedown', e => {
+  const side = Math.min(W, H);
+  const ox   = (W - side) * 0.5;
+  const oy   = (H - side) * 0.5;
+  const mx   = ((e.clientX - ox) / side * N) | 0;
+  const my   = ((e.clientY - oy) / side * N) | 0;
+
+  if (mx < 1 || mx > N-2 || my < 1 || my > N-2) return;
+
+  // Punch a water source: simulate a burst of droplets from this spot
+  const oldPF = P.speed;
+  for (let i = 0; i < 800; i++) {
+    let px2 = mx + (Math.random()-0.5)*6;
+    let py2 = my + (Math.random()-0.5)*6;
+    px2 = Math.max(1, Math.min(N-2, px2));
+    py2 = Math.max(1, Math.min(N-2, py2));
+
+    // Temporarily redirect simulation to start from these points
+    const saved = heightMap[my*N+mx];
+    // heightMap stays — just use a direct loop
+    let vx2=0, vy2=0, spd2=1.0, water2=1.0, sed2=0;
+    for (let s=0; s<P.maxSteps; s++) {
+      const [gx2, gy2] = getGrad(px2, py2);
+      vx2 = vx2*P.inertia - gx2*(1-P.inertia);
+      vy2 = vy2*P.inertia - gy2*(1-P.inertia);
+      const l2 = Math.sqrt(vx2*vx2+vy2*vy2);
+      if (l2 < 1e-7) break;
+      vx2 /= l2; vy2 /= l2;
+      const ox2=px2, oy2=py2;
+      px2 += vx2; py2 += vy2;
+      if (px2<1||px2>N-2||py2<1||py2>N-2) break;
+      const dH2 = getH(px2,py2) - getH(ox2,oy2);
+      const cap2 = Math.max(-dH2,P.minSlope)*spd2*water2*P.capacity;
+      if (sed2>cap2||dH2>0) {
+        const amt2 = dH2>0 ? Math.min(dH2,sed2) : (sed2-cap2)*P.deposit;
+        sed2 -= amt2;
+        const ix2=ox2|0, iy2=oy2|0, fx2=ox2-ix2, fy2=oy2-iy2;
+        if (ix2>=0&&ix2<N-1&&iy2>=0&&iy2<N-1) {
+          heightMap[iy2*N+ix2]     = Math.min(1,heightMap[iy2*N+ix2]    +amt2*(1-fx2)*(1-fy2));
+          heightMap[iy2*N+ix2+1]   = Math.min(1,heightMap[iy2*N+ix2+1]  +amt2*fx2*(1-fy2));
+          heightMap[(iy2+1)*N+ix2] = Math.min(1,heightMap[(iy2+1)*N+ix2]+amt2*(1-fx2)*fy2);
+          heightMap[(iy2+1)*N+ix2+1]=Math.min(1,heightMap[(iy2+1)*N+ix2+1]+amt2*fx2*fy2);
+        }
+      } else {
+        const amt2 = Math.min((cap2-sed2)*P.erode, -dH2);
+        sed2 += amt2;
+        const ix2=ox2|0, iy2=oy2|0;
+        for (let bi=0;bi<brushX.length;bi++) {
+          const bx2=ix2+brushX[bi], by2=iy2+brushY[bi];
+          if (bx2>=0&&bx2<N&&by2>=0&&by2<N)
+            heightMap[by2*N+bx2] = Math.max(0,heightMap[by2*N+bx2]-brushW[bi]*amt2);
+        }
+      }
+      spd2   = Math.sqrt(Math.max(0,spd2*spd2+dH2*P.gravity));
+      water2*=(1-P.evaporate);
+      if (water2<0.005) break;
+    }
+  }
+  totalDrops += 800;
+});
+
+// ─── UI wiring ────────────────────────────────────────────────────────────────
+function wire(id, key, parse, fmt) {
+  const el = document.getElementById(id);
+  const sp = document.getElementById('v-' + id);
+  el.addEventListener('input', () => {
+    P[key] = parse(el.value);
+    if (sp) sp.textContent = fmt(P[key]);
+    if (key === 'radius') buildBrush(P.radius);
+  });
+}
+
+wire('inertia',  'inertia',   parseFloat, v => v.toFixed(2));
+wire('radius',   'radius',    parseInt,   v => v);
+wire('erode',    'erode',     parseFloat, v => v.toFixed(2));
+wire('deposit',  'deposit',   parseFloat, v => v.toFixed(2));
+wire('evaporate','evaporate', parseFloat, v => v.toFixed(3));
+wire('capacity', 'capacity',  parseFloat, v => v.toFixed(1));
+wire('speed',    'speed',     parseInt,   v => v);
+
+document.getElementById('showWater').addEventListener('change', e => {
+  P.showWater = e.target.checked;
+});
+document.getElementById('hillshade').addEventListener('change', e => {
+  P.hillshade = e.target.checked;
+});
+
+const toggleBtn = document.getElementById('toggleBtn');
+toggleBtn.addEventListener('click', () => {
+  P.running = !P.running;
+  toggleBtn.textContent = P.running ? '⏸ Pause' : '▶ Resume';
+  if (P.running) toggleBtn.classList.add('active');
+  else           toggleBtn.classList.remove('active');
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  generateTerrain();
+  renderTerrain();
+});
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+const statsEl = document.getElementById('stats');
+let lastTime  = performance.now();
+let lastDrops = 0;
+
+function updateStats(now) {
+  const dt = (now - lastTime) / 1000;
+  if (dt > 0.5) {
+    const rate = ((totalDrops - lastDrops) / dt / 1000).toFixed(1);
+    statsEl.innerHTML =
+      `drops: ${totalDrops.toLocaleString()}<br>rate: ${rate} k/s`;
+    lastTime  = now;
+    lastDrops = totalDrops;
+  }
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+let frameCount = 0;
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (P.running) {
+    simulateDroplets(P.speed);
+  }
+  // Render every frame (even when paused, for resize / initial display)
+  renderTerrain();
+  updateStats(now);
+  frameCount++;
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+buildBrush(P.radius);
+generateTerrain();
+renderTerrain();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

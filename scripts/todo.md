@@ -49,8 +49,8 @@
 - [x] 042 Soft Body (pressure-based deformable circle, springs)
 - [x] 043 Wave Equation (2D membrane PDE solver, real-time)
 - [x] 044 Gravity Lensing (Einstein ring, WebGL GLSL)
-- [ ] 045 N-Body Gravity (Barnes-Hut tree, thousands of particles)
-- [ ] 046 Terrain Erosion (hydraulic erosion on heightmap)
+- [x] 045 N-Body Gravity (Barnes-Hut tree, thousands of particles)
+- [x] 046 Terrain Erosion (hydraulic erosion on heightmap)
 - [ ] 047 Smoke + Wind (velocity field advection, canvas)
 - [ ] 048 Elastic Collisions (2D rigid body, angle-based resolution)
 

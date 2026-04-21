@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#045 N-Body Gravity — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e0e8ff}
+canvas{display:block;width:100vw;height:100vh;cursor:crosshair}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(0,0,0,0.68);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:14px 16px;min-width:230px;font-size:0.82rem}
+h1{font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase;color:#6a7a9a;margin-bottom:11px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.row label{width:100px;color:#c0c8e0;flex-shrink:0;font-size:0.79rem}
+.row input[type=range]{flex:1;accent-color:#7ec8ff;cursor:pointer}
+.val{width:40px;text-align:right;color:#7ec8ff;font-size:0.74rem;font-variant-numeric:tabular-nums}
+.sep{margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.07)}
+.btn-row{display:flex;gap:5px;margin-top:3px;margin-bottom:8px}
+button{flex:1;background:rgba(126,200,255,0.1);border:1px solid rgba(126,200,255,0.22);color:#7ec8ff;border-radius:6px;padding:5px 3px;font-size:0.74rem;cursor:pointer;transition:background .15s}
+button:hover{background:rgba(126,200,255,0.22)}
+button.active{background:rgba(126,200,255,0.30);border-color:rgba(126,200,255,0.5)}
+.ck-row{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+.ck-row input{accent-color:#7ec8ff;cursor:pointer;width:13px;height:13px;flex-shrink:0}
+.ck-row label{color:#c0c8e0;font-size:0.79rem;cursor:pointer}
+.stat{font-size:0.68rem;color:#4a6a8a;margin-top:8px;line-height:1.6}
+.stat span{color:#7ec8ff}
+#hint{position:fixed;bottom:14px;left:16px;color:rgba(180,210,255,0.28);font-size:0.7rem;pointer-events:none}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.22);font-size:0.7rem}
+footer a{color:rgba(255,255,255,0.3);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.6)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <h1>045 · N-Body Gravity</h1>
+  <div class="row"><label>Particles</label><input type="range" id="s-n" min="200" max="5000" value="3000" step="100"><span class="val" id="v-n">3000</span></div>
+  <div class="row"><label>Gravity G</label><input type="range" id="s-g" min="1" max="200" value="60" step="1"><span class="val" id="v-g">60</span></div>
+  <div class="row"><label>θ (Barnes-Hut)</label><input type="range" id="s-t" min="2" max="18" value="7" step="1"><span class="val" id="v-t">0.7</span></div>
+  <div class="row"><label>Softening ε</label><input type="range" id="s-e" min="1" max="30" value="8" step="1"><span class="val" id="v-e">8</span></div>
+  <div class="row"><label>Time Step</label><input type="range" id="s-dt" min="1" max="20" value="8" step="1"><span class="val" id="v-dt">0.8</span></div>
+  <hr class="sep">
+  <div class="ck-row"><input type="checkbox" id="cb-trail" checked><label for="cb-trail">Trails</label></div>
+  <div class="ck-row"><input type="checkbox" id="cb-tree"><label for="cb-tree">Show quad-tree</label></div>
+  <div class="btn-row">
+    <button id="btn-galaxy">Galaxy</button>
+    <button id="btn-clash">Collision</button>
+    <button id="btn-random">Random</button>
+  </div>
+  <div class="btn-row">
+    <button id="btn-well" class="active">Well mode</button>
+    <button id="btn-burst">Burst mode</button>
+  </div>
+  <div class="stat">
+    Bodies: <span id="st-n">—</span> · FPS: <span id="st-fps">—</span><br>
+    Tree nodes: <span id="st-nodes">—</span> · Force evals: <span id="st-evals">—</span>
+  </div>
+</div>
+<div id="hint">Click to add gravity well · Right-click to repel</div>
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 045</footer>
+
+<script>
+'use strict';
+
+/* ─── Canvas setup ──────────────────────────────────────────────────────── */
+const canvas = document.getElementById('c');
+let W = canvas.width  = window.innerWidth;
+let H = canvas.height = window.innerHeight;
+const ctx = canvas.getContext('2d');
+
+window.addEventListener('resize', () => {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+});
+
+/* ─── Controls ──────────────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+let N          = 3000;
+let G          = 60;
+let THETA      = 0.7;
+let SOFT       = 8;
+let DT         = 0.8;
+let showTrails = true;
+let showTree   = false;
+let clickMode  = 'well';   // 'well' | 'burst'
+
+function bindSlider(id, valId, scale, setter) {
+  const sl = $(id), sp = $(valId);
+  const update = () => { const v = sl.value * scale; sp.textContent = v.toFixed(scale < 1 ? 1 : 0); setter(v); };
+  sl.addEventListener('input', update);
+  update();
+}
+bindSlider('s-n',  'v-n',  1,    v => { N = v; });
+bindSlider('s-g',  'v-g',  1,    v => { G = v; });
+bindSlider('s-t',  'v-t',  0.1,  v => { THETA = v; });
+bindSlider('s-e',  'v-e',  1,    v => { SOFT = v; });
+bindSlider('s-dt', 'v-dt', 0.1,  v => { DT = v; });
+
+$('cb-trail').addEventListener('change', e => showTrails = e.target.checked);
+$('cb-tree' ).addEventListener('change', e => showTree   = e.target.checked);
+
+$('btn-galaxy').addEventListener('click', () => initGalaxy());
+$('btn-clash' ).addEventListener('click', () => initClash());
+$('btn-random').addEventListener('click', () => initRandom());
+
+$('btn-well').addEventListener('click',  () => { clickMode = 'well';  $('btn-well').classList.add('active');  $('btn-burst').classList.remove('active'); });
+$('btn-burst').addEventListener('click', () => { clickMode = 'burst'; $('btn-burst').classList.add('active'); $('btn-well').classList.remove('active'); });
+
+/* ─── Particle arrays (Structure-of-Arrays for cache perf) ──────────────── */
+let px, py, vx, vy, ax, ay, mass, col;  // typed arrays
+
+function allocParticles(n) {
+  px   = new Float64Array(n);
+  py   = new Float64Array(n);
+  vx   = new Float64Array(n);
+  vy   = new Float64Array(n);
+  ax   = new Float64Array(n);
+  ay   = new Float64Array(n);
+  mass = new Float64Array(n);
+  col  = new Uint32Array(n);   // packed RGBA for display
+}
+
+/* ─── Color helpers ─────────────────────────────────────────────────────── */
+// Map speed (0..maxSpeed) to a color via a hot-spectrum gradient
+function speedColor(speed) {
+  // gradient: deep blue → cyan → white → yellow → orange → red
+  const t = Math.min(1, speed / 120);
+  let r, g, b;
+  if (t < 0.2) {
+    const s = t / 0.2;
+    r = Math.round(20  + 30  * s);
+    g = Math.round(30  + 80  * s);
+    b = Math.round(180 + 50  * s);
+  } else if (t < 0.4) {
+    const s = (t - 0.2) / 0.2;
+    r = Math.round(50  + 50  * s);
+    g = Math.round(110 + 100 * s);
+    b = Math.round(230 - 80  * s);
+  } else if (t < 0.6) {
+    const s = (t - 0.4) / 0.2;
+    r = Math.round(100 + 155 * s);
+    g = Math.round(210 + 30  * s);
+    b = Math.round(150 - 130 * s);
+  } else if (t < 0.8) {
+    const s = (t - 0.6) / 0.2;
+    r = Math.round(255);
+    g = Math.round(240 - 130 * s);
+    b = Math.round(20  - 15  * s);
+  } else {
+    const s = (t - 0.8) / 0.2;
+    r = Math.round(255);
+    g = Math.round(110 - 100 * s);
+    b = Math.round(5);
+  }
+  return `rgb(${r},${g},${b})`;
+}
+
+// pre-baked color LUT (256 entries)
+const COLOR_LUT = new Array(256);
+for (let i = 0; i < 256; i++) COLOR_LUT[i] = speedColor(i * 0.6);
+
+function getColor(speed) {
+  return COLOR_LUT[Math.min(255, speed | 0)];
+}
+
+/* ─── Initial conditions ────────────────────────────────────────────────── */
+function gaussRand() {
+  // Box-Muller
+  const u = 1 - Math.random(), v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function initGalaxy() {
+  const n = N | 0;
+  allocParticles(n);
+  const cx = W * 0.5, cy = H * 0.5;
+  const R = Math.min(W, H) * 0.36;
+  for (let i = 0; i < n; i++) {
+    // exponential disk + bulge distribution
+    const r = R * Math.pow(Math.random(), 1.4) * (0.1 + 0.9 * Math.random());
+    const angle = Math.random() * 2 * Math.PI;
+    // add spiral arm bias
+    const arm = Math.floor(Math.random() * 2) * Math.PI;
+    const armAngle = angle + arm + r / R * 3.5;
+    const scatter = (Math.random() - 0.5) * R * 0.25 * (r / R);
+    px[i] = cx + Math.cos(armAngle) * r + scatter * Math.cos(armAngle + Math.PI / 2);
+    py[i] = cy + Math.sin(armAngle) * r + scatter * Math.sin(armAngle + Math.PI / 2);
+    // circular orbit velocity ≈ sqrt(G * M_enc / r)
+    const M_enc = (i + 1);   // treat as if each particle has same mass
+    const orbV  = Math.sqrt(G * M_enc * 0.004 / (r + SOFT));
+    vx[i] =  Math.sin(armAngle) * orbV + gaussRand() * 2;
+    vy[i] = -Math.cos(armAngle) * orbV + gaussRand() * 2;
+    mass[i] = 0.5 + Math.random() * 1.5;
+  }
+}
+
+function initClash() {
+  const n = N | 0;
+  allocParticles(n);
+  const n2 = n >> 1;
+  const R  = Math.min(W, H) * 0.22;
+  const off = Math.min(W, H) * 0.22;
+
+  function fillDisk(start, count, cx, cy, vcx, vcy) {
+    for (let i = 0; i < count; i++) {
+      const r     = R * Math.sqrt(Math.random());
+      const angle = Math.random() * 2 * Math.PI;
+      const orbV  = Math.sqrt(G * count * 0.008 / (r + SOFT));
+      px[start + i] = cx + Math.cos(angle) * r;
+      py[start + i] = cy + Math.sin(angle) * r;
+      vx[start + i] = vcx + Math.sin(angle) * orbV + gaussRand();
+      vy[start + i] = vcy - Math.cos(angle) * orbV + gaussRand();
+      mass[start + i] = 0.8 + Math.random();
+    }
+  }
+
+  const cx = W * 0.5, cy = H * 0.5;
+  // two galaxies approaching each other
+  fillDisk(0,  n2,      cx - off, cy, +12, +2);
+  fillDisk(n2, n - n2,  cx + off, cy, -12, -2);
+}
+
+function initRandom() {
+  const n = N | 0;
+  allocParticles(n);
+  for (let i = 0; i < n; i++) {
+    px[i]   = W * 0.1 + Math.random() * W * 0.8;
+    py[i]   = H * 0.1 + Math.random() * H * 0.8;
+    vx[i]   = (Math.random() - 0.5) * 30;
+    vy[i]   = (Math.random() - 0.5) * 30;
+    mass[i] = 0.5 + Math.random() * 2;
+  }
+}
+
+/* ─── Barnes-Hut Quad-Tree ──────────────────────────────────────────────── */
+// Node pool: flat typed arrays for speed
+// Each node: [x, y, w, h, cx, cy, totalMass, childTL, childTR, childBL, childBR, particleIdx]
+// indices:     0  1  2  3   4   5      6        7        8        9       10         11
+const NODE_FIELDS = 12;
+const POOL_SIZE   = 1 << 20;  // 1M nodes max
+
+const nodePool = new Float64Array(POOL_SIZE * NODE_FIELDS);
+const INT_POOL = new Int32Array(nodePool.buffer);  // same buffer for int fields
+let   poolPtr  = 0;
+let   treeEvals = 0;
+
+function nodeAlloc(x, y, w, h) {
+  const base = poolPtr * NODE_FIELDS;
+  if (base + NODE_FIELDS >= POOL_SIZE * NODE_FIELDS) return -1;  // overflow guard
+  nodePool[base + 0] = x;
+  nodePool[base + 1] = y;
+  nodePool[base + 2] = w;
+  nodePool[base + 3] = h;
+  nodePool[base + 4] = 0;  // cx
+  nodePool[base + 5] = 0;  // cy
+  nodePool[base + 6] = 0;  // totalMass
+  INT_POOL[base + 7] = -1; // childTL
+  INT_POOL[base + 8] = -1; // childTR
+  INT_POOL[base + 9] = -1; // childBL
+  INT_POOL[base + 10] = -1;// childBR
+  INT_POOL[base + 11] = -1;// particleIdx
+  return poolPtr++;
+}
+
+function insertParticle(nodeIdx, pIdx, depth) {
+  if (nodeIdx < 0 || depth > 64) return;
+  const base = nodeIdx * NODE_FIELDS;
+  const tm   = nodePool[base + 6];
+  const piIdx = INT_POOL[base + 11];
+
+  if (tm === 0 && piIdx < 0) {
+    // empty leaf — store this particle
+    INT_POOL[base + 11] = pIdx;
+    nodePool[base + 4]  = px[pIdx];
+    nodePool[base + 5]  = py[pIdx];
+    nodePool[base + 6]  = mass[pIdx];
+    return;
+  }
+
+  // internal node or occupied leaf — update CoM
+  const oldMass = nodePool[base + 6];
+  const newMass = oldMass + mass[pIdx];
+  nodePool[base + 4] = (nodePool[base + 4] * oldMass + px[pIdx] * mass[pIdx]) / newMass;
+  nodePool[base + 5] = (nodePool[base + 5] * oldMass + py[pIdx] * mass[pIdx]) / newMass;
+  nodePool[base + 6] = newMass;
+
+  const x = nodePool[base + 0], y = nodePool[base + 1];
+  const w = nodePool[base + 2], h = nodePool[base + 3];
+  const hw = w * 0.5, hh = h * 0.5;
+  const mx = x + hw, my = y + hh;
+
+  if (piIdx >= 0) {
+    // occupied leaf → subdivide: push existing particle down
+    INT_POOL[base + 11] = -1;
+    pushDown(nodeIdx, piIdx, x, y, mx, my, hw, hh, depth);
+  }
+  // insert new particle
+  pushDown(nodeIdx, pIdx, x, y, mx, my, hw, hh, depth);
+}
+
+function pushDown(nodeIdx, pIdx, x, y, mx, my, hw, hh, depth) {
+  const base = nodeIdx * NODE_FIELDS;
+  // determine quadrant
+  let childField, cx2, cy2;
+  if (px[pIdx] < mx) {
+    if (py[pIdx] < my) { childField = 7;  cx2 = x;  cy2 = y;  }
+    else               { childField = 9;  cx2 = x;  cy2 = my; }
+  } else {
+    if (py[pIdx] < my) { childField = 8;  cx2 = mx; cy2 = y;  }
+    else               { childField = 10; cx2 = mx; cy2 = my; }
+  }
+
+  let childIdx = INT_POOL[base + childField];
+  if (childIdx < 0) {
+    childIdx = nodeAlloc(cx2, cy2, hw, hh);
+    INT_POOL[base + childField] = childIdx;
+  }
+  insertParticle(childIdx, pIdx, depth + 1);
+}
+
+function buildTree(n) {
+  poolPtr = 0;
+  // bounding box with slight padding
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (px[i] < minX) minX = px[i];
+    if (py[i] < minY) minY = py[i];
+    if (px[i] > maxX) maxX = px[i];
+    if (py[i] > maxY) maxY = py[i];
+  }
+  const pad = 1;
+  minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+  const side = Math.max(maxX - minX, maxY - minY);
+  const root = nodeAlloc(minX, minY, side, side);
+  for (let i = 0; i < n; i++) insertParticle(root, i, 0);
+  return root;
+}
+
+// Iterative (stack-based) force calculation to avoid recursion limit
+const calcStack = new Int32Array(256);
+
+function calcForce(pIdx, root) {
+  let fax = 0, fay = 0;
+  let sp = 0;
+  calcStack[sp++] = root;
+  const mi = mass[pIdx];
+  const xi = px[pIdx], yi = py[pIdx];
+  const theta2 = THETA * THETA;
+  const soft2  = SOFT * SOFT;
+
+  while (sp > 0) {
+    const nodeIdx = calcStack[--sp];
+    if (nodeIdx < 0) continue;
+    const base = nodeIdx * NODE_FIELDS;
+    const nodeMass = nodePool[base + 6];
+    if (nodeMass === 0) continue;
+
+    const ncx = nodePool[base + 4];
+    const ncy = nodePool[base + 5];
+    const dx = ncx - xi, dy = ncy - yi;
+    const dist2 = dx * dx + dy * dy + soft2;
+    const nodeW = nodePool[base + 2];
+
+    const isLeaf = (INT_POOL[base + 7] < 0 &&
+                    INT_POOL[base + 8] < 0 &&
+                    INT_POOL[base + 9] < 0 &&
+                    INT_POOL[base + 10] < 0);
+
+    if (isLeaf) {
+      // skip self
+      if (INT_POOL[base + 11] === pIdx) continue;
+      // leaf force
+      const dist3 = dist2 * Math.sqrt(dist2);
+      const f     = G * nodeMass / dist3;
+      fax += f * dx;
+      fay += f * dy;
+      treeEvals++;
+    } else if ((nodeW * nodeW) / dist2 < theta2) {
+      // far enough — treat as single body
+      const dist3 = dist2 * Math.sqrt(dist2);
+      const f     = G * nodeMass / dist3;
+      fax += f * dx;
+      fay += f * dy;
+      treeEvals++;
+    } else {
+      // open node — push children
+      if (sp + 4 < calcStack.length) {
+        calcStack[sp++] = INT_POOL[base + 7];
+        calcStack[sp++] = INT_POOL[base + 8];
+        calcStack[sp++] = INT_POOL[base + 9];
+        calcStack[sp++] = INT_POOL[base + 10];
+      }
+    }
+  }
+  return [fax, fay];
+}
+
+/* ─── Gravity wells (mouse interaction) ─────────────────────────────────── */
+const wells = [];   // { x, y, strength, life }
+
+canvas.addEventListener('mousedown', e => {
+  e.preventDefault();
+  const sign = e.button === 2 ? -1 : 1;
+  if (clickMode === 'well') {
+    wells.push({ x: e.clientX, y: e.clientY, strength: sign * 40000, life: 120 });
+  } else {
+    // burst: give nearby particles an outward kick
+    const bx = e.clientX, by = e.clientY;
+    const n = px.length;
+    for (let i = 0; i < n; i++) {
+      const dx = px[i] - bx, dy = py[i] - by;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < 90000) {
+        const d = Math.sqrt(d2) + 1;
+        const f = sign * 800 / d;
+        vx[i] += f * dx / d;
+        vy[i] += f * dy / d;
+      }
+    }
+  }
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+/* ─── Tree drawing ───────────────────────────────────────────────────────── */
+function drawTree(root, maxDepth) {
+  if (root < 0) return;
+  ctx.strokeStyle = 'rgba(100,200,255,0.08)';
+  ctx.lineWidth = 0.5;
+  const stack = [[root, 0]];
+  while (stack.length > 0) {
+    const [idx, depth] = stack.pop();
+    if (idx < 0 || depth > maxDepth) continue;
+    const base = idx * NODE_FIELDS;
+    const x = nodePool[base + 0], y = nodePool[base + 1];
+    const w = nodePool[base + 2], h = nodePool[base + 3];
+    ctx.strokeRect(x, y, w, h);
+    stack.push([INT_POOL[base + 7],  depth + 1]);
+    stack.push([INT_POOL[base + 8],  depth + 1]);
+    stack.push([INT_POOL[base + 9],  depth + 1]);
+    stack.push([INT_POOL[base + 10], depth + 1]);
+  }
+}
+
+/* ─── Simulation loop ────────────────────────────────────────────────────── */
+let lastTime    = 0;
+let fps         = 0;
+let frameCount  = 0;
+let fpsAccum    = 0;
+let totalEvals  = 0;
+let treeNodes   = 0;
+let needReinit  = true;
+let currentMode = 'galaxy';
+
+// Detect if N changed
+let lastN = N;
+
+function step() {
+  const n = px.length;
+  treeEvals = 0;
+  const root = buildTree(n);
+  treeNodes  = poolPtr;
+
+  // Reset accelerations
+  for (let i = 0; i < n; i++) { ax[i] = 0; ay[i] = 0; }
+
+  // Barnes-Hut forces
+  for (let i = 0; i < n; i++) {
+    const [fax, fay] = calcForce(i, root);
+    ax[i] += fax;
+    ay[i] += fay;
+  }
+
+  // Gravity wells
+  for (let w = wells.length - 1; w >= 0; w--) {
+    const well = wells[w];
+    well.life--;
+    if (well.life <= 0) { wells.splice(w, 1); continue; }
+    for (let i = 0; i < n; i++) {
+      const dx = well.x - px[i], dy = well.y - py[i];
+      const d2 = dx * dx + dy * dy + SOFT * SOFT;
+      const d3 = d2 * Math.sqrt(d2);
+      const f  = well.strength / d3;
+      ax[i] += f * dx;
+      ay[i] += f * dy;
+    }
+  }
+
+  // Velocity Verlet integrate
+  const dt = DT * 0.016;
+  for (let i = 0; i < n; i++) {
+    vx[i] += ax[i] * dt;
+    vy[i] += ay[i] * dt;
+    px[i] += vx[i] * dt;
+    py[i] += vy[i] * dt;
+  }
+
+  totalEvals = treeEvals;
+  return root;
+}
+
+/* ─── Render ─────────────────────────────────────────────────────────────── */
+function render(root) {
+  if (showTrails) {
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.clearRect(0, 0, W, H);
+  }
+
+  if (showTree) drawTree(root, 6);
+
+  const n = px.length;
+  for (let i = 0; i < n; i++) {
+    const speed = Math.sqrt(vx[i] * vx[i] + vy[i] * vy[i]);
+    ctx.fillStyle = getColor(speed);
+    ctx.fillRect(px[i] - 0.5, py[i] - 0.5, 1.5, 1.5);
+  }
+
+  // Draw active wells
+  for (const w of wells) {
+    const alpha = w.life / 120;
+    const sign  = w.strength > 0 ? 1 : -1;
+    const clr   = sign > 0 ? `rgba(100,220,255,${alpha * 0.6})` : `rgba(255,100,80,${alpha * 0.6})`;
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, 14 * (1 - (1 - alpha)), 0, Math.PI * 2);
+    ctx.strokeStyle = clr;
+    ctx.lineWidth   = 1.2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = clr;
+    ctx.fill();
+  }
+}
+
+/* ─── Main loop ─────────────────────────────────────────────────────────── */
+function updateStats(dt) {
+  fpsAccum += dt;
+  frameCount++;
+  if (fpsAccum >= 0.5) {
+    fps = (frameCount / fpsAccum) | 0;
+    fpsAccum  = 0;
+    frameCount = 0;
+    $('st-n').textContent    = px.length;
+    $('st-fps').textContent  = fps;
+    $('st-nodes').textContent = treeNodes;
+    $('st-evals').textContent = (totalEvals / 1000).toFixed(1) + 'k';
+  }
+}
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  // Re-init if N changed
+  const newN = N | 0;
+  if (newN !== lastN || needReinit) {
+    lastN = newN;
+    needReinit = false;
+    if (currentMode === 'galaxy')   initGalaxy();
+    else if (currentMode === 'clash') initClash();
+    else initRandom();
+  }
+
+  const root = step();
+  render(root);
+  updateStats(dt);
+}
+
+// Buttons also set currentMode + reinit
+$('btn-galaxy').addEventListener('click', () => { currentMode = 'galaxy'; needReinit = true; });
+$('btn-clash' ).addEventListener('click', () => { currentMode = 'clash';  needReinit = true; });
+$('btn-random').addEventListener('click', () => { currentMode = 'random'; needReinit = true; });
+
+// Trigger reinit when N changes
+$('s-n').addEventListener('change', () => { needReinit = true; });
+
+initGalaxy();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
