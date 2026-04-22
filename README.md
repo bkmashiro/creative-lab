@@ -68,6 +68,7 @@
 | [044](demos/044-gravity-lensing.html) | Gravity Lensing | WebGL, GLSL, Einstein ring, point-mass lens equation, magnification |
 | [045](demos/045-nbody-gravity.html) | N-Body Gravity | Barnes-Hut tree |
 | [046](demos/046-terrain-erosion.html) | Terrain Erosion | Canvas 2D, hydraulic erosion, droplet simulation, hillshading |
+| [047](demos/047-smoke-wind.html) | Smoke + Wind | Canvas 2D, semi-Lagrangian advection, curl noise turbulence, velocity field |
 
 *More coming every 2 days →*
 

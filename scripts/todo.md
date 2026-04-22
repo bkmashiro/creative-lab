@@ -51,7 +51,7 @@
 - [x] 044 Gravity Lensing (Einstein ring, WebGL GLSL)
 - [x] 045 N-Body Gravity (Barnes-Hut tree, thousands of particles)
 - [x] 046 Terrain Erosion (hydraulic erosion on heightmap)
-- [ ] 047 Smoke + Wind (velocity field advection, canvas)
+- [x] 047 Smoke + Wind (velocity field advection, canvas)
 - [ ] 048 Elastic Collisions (2D rigid body, angle-based resolution)
 
 ### Generative & Mathematical
