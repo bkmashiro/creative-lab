@@ -69,6 +69,7 @@
 | [045](demos/045-nbody-gravity.html) | N-Body Gravity | Barnes-Hut tree |
 | [046](demos/046-terrain-erosion.html) | Terrain Erosion | Canvas 2D, hydraulic erosion, droplet simulation, hillshading |
 | [047](demos/047-smoke-wind.html) | Smoke + Wind | Canvas 2D, semi-Lagrangian advection, curl noise turbulence, velocity field |
+| [048](demos/048-elastic-collisions.html) | Elastic Collisions | Canvas 2D, 2D rigid-body physics, angle-based collision resolution, spatial grid broadphase |
 
 *More coming every 2 days →*
 

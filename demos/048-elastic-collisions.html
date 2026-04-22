@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#048 Elastic Collisions — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#080c12;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#dde6f0}
+canvas{display:block;width:100vw;height:100vh;position:fixed;top:0;left:0}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(8,12,20,0.82);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(140,210,255,0.13);border-radius:12px;padding:14px 16px;min-width:238px;font-size:0.82rem}
+h1{font-size:0.7rem;letter-spacing:0.13em;text-transform:uppercase;color:#4a7a9a;margin-bottom:11px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.row label{width:90px;color:#a0bcd0;flex-shrink:0;font-size:0.78rem}
+.row input[type=range]{flex:1;accent-color:#6ec8ff;cursor:pointer}
+.val{width:40px;text-align:right;color:#6ec8ff;font-size:0.74rem;font-variant-numeric:tabular-nums}
+.check-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer}
+.check-row input{accent-color:#6ec8ff;cursor:pointer}
+.check-row span{color:#a0bcd0;font-size:0.78rem}
+.btn-row{display:flex;gap:5px;margin-top:9px}
+button{flex:1;background:rgba(110,200,255,0.07);border:1px solid rgba(110,200,255,0.18);color:#6ec8ff;border-radius:6px;padding:5px 4px;font-size:0.74rem;cursor:pointer;transition:background .15s}
+button:hover{background:rgba(110,200,255,0.18)}
+button.active{background:rgba(110,200,255,0.24);border-color:rgba(110,200,255,0.42)}
+#stats{position:fixed;top:16px;right:16px;z-index:10;background:rgba(8,12,20,0.75);backdrop-filter:blur(10px);border:1px solid rgba(140,210,255,0.1);border-radius:10px;padding:10px 14px;font-size:0.74rem;color:#6a8a9a;text-align:right;line-height:1.7}
+#stats span{color:#9ec8e0;font-variant-numeric:tabular-nums}
+#hint{position:fixed;bottom:14px;left:16px;color:rgba(160,200,255,0.25);font-size:0.7rem;pointer-events:none}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.18);font-size:0.7rem}
+footer a{color:rgba(255,255,255,0.26);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.52)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <h1>048 · Elastic Collisions</h1>
+  <div class="row"><label>Gravity</label><input type="range" id="s-grav" min="0" max="1000" value="200"><span class="val" id="v-grav">200</span></div>
+  <div class="row"><label>Restitution</label><input type="range" id="s-rest" min="0" max="100" value="95"><span class="val" id="v-rest">0.95</span></div>
+  <div class="row"><label>Friction</label><input type="range" id="s-fric" min="0" max="60" value="8"><span class="val" id="v-fric">0.08</span></div>
+  <div class="row"><label>Ball count</label><input type="range" id="s-count" min="5" max="120" value="40"><span class="val" id="v-count">40</span></div>
+  <div class="row"><label>Size range</label><input type="range" id="s-size" min="4" max="32" value="16"><span class="val" id="v-size">16</span></div>
+  <div class="check-row"><label><input type="checkbox" id="cb-vel"> <span>Show velocities</span></label></div>
+  <div class="check-row"><label><input type="checkbox" id="cb-normal"> <span>Show collision normals</span></label></div>
+  <div class="check-row"><label><input type="checkbox" id="cb-trail" checked> <span>Trails</span></label></div>
+  <div class="btn-row">
+    <button id="btn-reset">Reset</button>
+    <button id="btn-pause">Pause</button>
+    <button id="btn-explode">Explode!</button>
+  </div>
+</div>
+
+<div id="stats">
+  Balls: <span id="st-balls">40</span><br>
+  Collisions/s: <span id="st-coll">0</span><br>
+  KE: <span id="st-ke">0</span>
+</div>
+
+<div id="hint">Click to spawn · Drag to launch</div>
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 048</footer>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+// ── Parameters ───────────────────────────────────────────────────────────────
+const P = {
+  gravity:     200,
+  restitution: 0.95,
+  friction:    0.08,
+  count:       40,
+  maxR:        16,
+  showVel:     false,
+  showNormal:  false,
+  trails:      true,
+  paused:      false,
+};
+
+// ── Ball palette ─────────────────────────────────────────────────────────────
+const PALETTE = [
+  [106, 210, 255], // cyan-blue
+  [255, 160, 100], // warm orange
+  [160, 255, 140], // lime green
+  [220, 140, 255], // violet
+  [255, 220,  90], // gold
+  [100, 180, 255], // sky
+  [255, 120, 160], // pink
+  [ 80, 240, 200], // teal
+];
+
+// ── Ball class ───────────────────────────────────────────────────────────────
+class Ball {
+  constructor(x, y, r, vx, vy, colorIdx) {
+    this.x  = x;  this.y  = y;
+    this.vx = vx; this.vy = vy;
+    this.r  = r;
+    this.m  = Math.PI * r * r; // mass ∝ area
+    this.ci = colorIdx !== undefined ? colorIdx : (Math.random() * PALETTE.length | 0);
+    this.trail = [];
+    this.flashT = 0; // collision flash timer
+  }
+  get color() { return PALETTE[this.ci]; }
+}
+
+let balls = [];
+let collisionsThisSecond = 0, collPerSec = 0;
+let collFlashes = []; // [{x,y,nx,ny,t}] for normal display
+
+// ── Spawn helpers ────────────────────────────────────────────────────────────
+function randomBall() {
+  const minR = 6, maxR = P.maxR;
+  const r  = minR + Math.random() * (maxR - minR);
+  const x  = r + Math.random() * (W - 2*r);
+  const y  = r + Math.random() * (H * 0.5);
+  const spd = 80 + Math.random() * 300;
+  const ang = Math.random() * Math.PI * 2;
+  return new Ball(x, y, r, Math.cos(ang)*spd, Math.sin(ang)*spd);
+}
+
+function resetBalls() {
+  balls = [];
+  for (let i = 0; i < P.count; i++) balls.push(randomBall());
+}
+resetBalls();
+
+// ── Collision resolution (angle-based elastic) ───────────────────────────────
+function resolveCollision(a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist === 0) return;
+
+  // Collision normal (unit vector from a → b)
+  const nx = dx / dist;
+  const ny = dy / dist;
+
+  // Separate overlapping balls (positional correction)
+  const overlap = (a.r + b.r) - dist;
+  const totalM  = a.m + b.m;
+  const pushA   = overlap * (b.m / totalM);
+  const pushB   = overlap * (a.m / totalM);
+  a.x -= nx * pushA;
+  a.y -= ny * pushA;
+  b.x += nx * pushB;
+  b.y += ny * pushB;
+
+  // Relative velocity along normal
+  const dvx = a.vx - b.vx;
+  const dvy = a.vy - b.vy;
+  const vRel = dvx * nx + dvy * ny;
+
+  // Only resolve if approaching
+  if (vRel <= 0) return;
+
+  // Elastic impulse scalar
+  const e  = P.restitution;
+  const j  = (1 + e) * vRel / (1/a.m + 1/b.m);
+
+  a.vx -= (j / a.m) * nx;
+  a.vy -= (j / a.m) * ny;
+  b.vx += (j / b.m) * nx;
+  b.vy += (j / b.m) * ny;
+
+  // Tangential friction impulse
+  const tx = -ny, ty = nx; // tangent
+  const vRelT = dvx * tx + dvy * ty;
+  const jt = Math.min(Math.abs(vRelT) * P.friction, Math.abs(j) * 0.4);
+  const sign = vRelT > 0 ? 1 : -1;
+  a.vx -= sign * (jt / a.m) * tx;
+  a.vy -= sign * (jt / a.m) * ty;
+  b.vx += sign * (jt / b.m) * tx;
+  b.vy += sign * (jt / b.m) * ty;
+
+  a.flashT = 0.12;
+  b.flashT = 0.12;
+  collisionsThisSecond++;
+
+  if (P.showNormal) {
+    const cx = (a.x + b.x) / 2;
+    const cy = (a.y + b.y) / 2;
+    collFlashes.push({ x: cx, y: cy, nx, ny, t: 0.3 });
+  }
+}
+
+// ── Broad-phase: simple spatial grid ─────────────────────────────────────────
+const CELL = 60;
+let grid = {};
+function gridKey(gx, gy) { return (gx & 0xFFF) | ((gy & 0xFFF) << 12); }
+
+function buildGrid() {
+  grid = {};
+  for (let i = 0; i < balls.length; i++) {
+    const b  = balls[i];
+    const gx = Math.floor(b.x / CELL);
+    const gy = Math.floor(b.y / CELL);
+    const k  = gridKey(gx, gy);
+    if (!grid[k]) grid[k] = [];
+    grid[k].push(i);
+  }
+}
+
+function checkCollisions() {
+  buildGrid();
+  const checked = new Uint8Array(balls.length * balls.length); // small enough
+  for (let i = 0; i < balls.length; i++) {
+    const a  = balls[i];
+    const gx = Math.floor(a.x / CELL);
+    const gy = Math.floor(a.y / CELL);
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oy = -1; oy <= 1; oy++) {
+        const k = gridKey(gx+ox, gy+oy);
+        const cell = grid[k];
+        if (!cell) continue;
+        for (let ci = 0; ci < cell.length; ci++) {
+          const j = cell[ci];
+          if (j <= i) continue;
+          const id = i * balls.length + j;
+          if (checked[id]) continue;
+          checked[id] = 1;
+          const b = balls[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          if (dx*dx + dy*dy < (a.r+b.r)*(a.r+b.r)) {
+            resolveCollision(a, b);
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── Simulation step ───────────────────────────────────────────────────────────
+let lastTime = 0, accumColl = 0, collTimer = 0;
+
+function step(dt) {
+  const dtc = Math.min(dt, 0.033);
+  const g   = P.gravity;
+
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+
+    if (P.trails) {
+      b.trail.push({ x: b.x, y: b.y });
+      if (b.trail.length > 18) b.trail.shift();
+    } else {
+      b.trail = [];
+    }
+
+    b.vy += g * dtc;
+    b.x  += b.vx * dtc;
+    b.y  += b.vy * dtc;
+
+    // Wall collisions
+    if (b.x - b.r < 0) {
+      b.x  = b.r;
+      b.vx = Math.abs(b.vx) * P.restitution;
+      b.flashT = 0.06;
+    } else if (b.x + b.r > W) {
+      b.x  = W - b.r;
+      b.vx = -Math.abs(b.vx) * P.restitution;
+      b.flashT = 0.06;
+    }
+    if (b.y - b.r < 0) {
+      b.y  = b.r;
+      b.vy = Math.abs(b.vy) * P.restitution;
+      b.flashT = 0.06;
+    } else if (b.y + b.r > H) {
+      b.y  = H - b.r;
+      b.vy = -Math.abs(b.vy) * P.restitution;
+      b.vx *= (1 - P.friction * 0.8);
+      b.flashT = 0.06;
+    }
+
+    if (b.flashT > 0) b.flashT -= dtc;
+  }
+
+  checkCollisions();
+
+  // Update flash timers for normals
+  for (let i = collFlashes.length - 1; i >= 0; i--) {
+    collFlashes[i].t -= dtc;
+    if (collFlashes[i].t <= 0) collFlashes.splice(i, 1);
+  }
+
+  // Collisions/s counter
+  collTimer += dtc;
+  if (collTimer >= 1.0) {
+    collPerSec = collisionsThisSecond;
+    collisionsThisSecond = 0;
+    collTimer = 0;
+  }
+}
+
+// ── Draw ─────────────────────────────────────────────────────────────────────
+function draw() {
+  // Fade trail
+  if (P.trails) {
+    ctx.fillStyle = 'rgba(8,12,18,0.28)';
+  } else {
+    ctx.fillStyle = 'rgba(8,12,18,1)';
+  }
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw trails
+  if (P.trails) {
+    for (let i = 0; i < balls.length; i++) {
+      const b = balls[i];
+      if (b.trail.length < 2) continue;
+      const [r,g,bl] = b.color;
+      ctx.beginPath();
+      ctx.moveTo(b.trail[0].x, b.trail[0].y);
+      for (let t = 1; t < b.trail.length; t++) {
+        ctx.lineTo(b.trail[t].x, b.trail[t].y);
+      }
+      ctx.strokeStyle = `rgba(${r},${g},${bl},0.18)`;
+      ctx.lineWidth   = b.r * 0.55;
+      ctx.lineCap     = 'round';
+      ctx.lineJoin    = 'round';
+      ctx.stroke();
+    }
+  }
+
+  // Draw balls
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    const [r,g,bl] = b.color;
+    const flash = Math.max(0, b.flashT / 0.12);
+    const speed = Math.sqrt(b.vx*b.vx + b.vy*b.vy);
+
+    // Glow
+    const glowR = b.r * (1.8 + flash * 1.2);
+    const grd = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, glowR);
+    grd.addColorStop(0,   `rgba(${r},${g},${bl},${0.18 + flash*0.22})`);
+    grd.addColorStop(1,   `rgba(${r},${g},${bl},0)`);
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, glowR, 0, Math.PI*2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+
+    // Ball body
+    const ballGrd = ctx.createRadialGradient(
+      b.x - b.r*0.3, b.y - b.r*0.3, b.r*0.05,
+      b.x, b.y, b.r
+    );
+    ballGrd.addColorStop(0, `rgba(${Math.min(255,r+60)},${Math.min(255,g+60)},${Math.min(255,bl+60)},1)`);
+    ballGrd.addColorStop(0.6, `rgba(${r},${g},${bl},1)`);
+    ballGrd.addColorStop(1,   `rgba(${r>>1},${g>>1},${bl>>1},1)`);
+
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+    ctx.fillStyle = ballGrd;
+    ctx.fill();
+
+    // Specular highlight
+    ctx.beginPath();
+    ctx.arc(b.x - b.r*0.28, b.y - b.r*0.28, b.r*0.32, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.fill();
+
+    // Velocity vector
+    if (P.showVel && speed > 10) {
+      const scale = Math.min(speed * 0.15, 60);
+      const ux = b.vx/speed, uy = b.vy/speed;
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x + ux*scale, b.y + uy*scale);
+      ctx.strokeStyle = `rgba(${r},${g},${bl},0.7)`;
+      ctx.lineWidth   = 1.5;
+      ctx.stroke();
+      // arrowhead
+      const ax = b.x + ux*scale, ay = b.y + uy*scale;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax - ux*6 - uy*4, ay - uy*6 + ux*4);
+      ctx.lineTo(ax - ux*6 + uy*4, ay - uy*6 - ux*4);
+      ctx.closePath();
+      ctx.fillStyle = `rgba(${r},${g},${bl},0.8)`;
+      ctx.fill();
+    }
+  }
+
+  // Collision normals
+  if (P.showNormal) {
+    for (let i = 0; i < collFlashes.length; i++) {
+      const f = collFlashes[i];
+      const alpha = f.t / 0.3;
+      const len = 28;
+      ctx.beginPath();
+      ctx.moveTo(f.x - f.nx*len, f.y - f.ny*len);
+      ctx.lineTo(f.x + f.nx*len, f.y + f.ny*len);
+      ctx.strokeStyle = `rgba(255,240,80,${alpha*0.9})`;
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([3,3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // dot at center
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, 3, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(255,240,80,${alpha})`;
+      ctx.fill();
+    }
+  }
+
+  // Drag preview
+  if (dragActive) {
+    const dx = mouseX - dragX, dy = mouseY - dragY;
+    const len = Math.sqrt(dx*dx+dy*dy);
+    if (len > 4) {
+      ctx.beginPath();
+      ctx.moveTo(dragX, dragY);
+      ctx.lineTo(dragX + dx*0.5, dragY + dy*0.5); // launch direction opposite
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([4,4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // preview ball
+    ctx.beginPath();
+    ctx.arc(dragX, dragY, 10, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+  }
+
+  // Stats
+  let ke = 0;
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    ke += 0.5 * b.m * (b.vx*b.vx + b.vy*b.vy);
+  }
+  document.getElementById('st-balls').textContent = balls.length;
+  document.getElementById('st-coll').textContent  = collPerSec;
+  document.getElementById('st-ke').textContent    = (ke/1e6).toFixed(2) + 'M';
+}
+
+// ── Animation loop ────────────────────────────────────────────────────────────
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+  if (!P.paused) step(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+
+// ── Mouse interaction ─────────────────────────────────────────────────────────
+let mouseX = 0, mouseY = 0;
+let dragActive = false, dragX = 0, dragY = 0;
+
+canvas.addEventListener('mousemove', e => {
+  mouseX = e.clientX; mouseY = e.clientY;
+});
+
+canvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  dragActive = true;
+  dragX = e.clientX; dragY = e.clientY;
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (!dragActive) return;
+  dragActive = false;
+  const dx = e.clientX - dragX, dy = e.clientY - dragY;
+  const spd = Math.sqrt(dx*dx+dy*dy) * 4;
+  const r   = 8 + Math.random() * (P.maxR - 8);
+  balls.push(new Ball(dragX, dragY, r, -dx*4, -dy*4));
+});
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  dragActive = true; dragX = t.clientX; dragY = t.clientY;
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (!dragActive) return;
+  dragActive = false;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - dragX, dy = t.clientY - dragY;
+  const r = 8 + Math.random() * (P.maxR - 8);
+  balls.push(new Ball(dragX, dragY, r, -dx*4, -dy*4));
+}, { passive: false });
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+function bindSlider(id, valId, param, scale, fmt) {
+  const el = document.getElementById(id);
+  const vl = document.getElementById(valId);
+  el.addEventListener('input', () => {
+    P[param] = parseFloat(el.value) * scale;
+    vl.textContent = fmt ? fmt(P[param]) : P[param];
+  });
+}
+
+bindSlider('s-grav',  'v-grav',  'gravity',     1,    v => Math.round(v));
+bindSlider('s-rest',  'v-rest',  'restitution', 0.01, v => v.toFixed(2));
+bindSlider('s-fric',  'v-fric',  'friction',    0.01, v => v.toFixed(2));
+bindSlider('s-size',  'v-size',  'maxR',        1,    v => Math.round(v));
+
+document.getElementById('s-count').addEventListener('input', function() {
+  P.count = parseInt(this.value);
+  document.getElementById('v-count').textContent = P.count;
+  while (balls.length < P.count) balls.push(randomBall());
+  while (balls.length > P.count) balls.pop();
+});
+
+document.getElementById('cb-vel').addEventListener('change', function() {
+  P.showVel = this.checked;
+});
+document.getElementById('cb-normal').addEventListener('change', function() {
+  P.showNormal = this.checked;
+});
+document.getElementById('cb-trail').addEventListener('change', function() {
+  P.trails = this.checked;
+  if (!this.checked) balls.forEach(b => b.trail = []);
+});
+
+document.getElementById('btn-reset').addEventListener('click', resetBalls);
+
+document.getElementById('btn-pause').addEventListener('click', function() {
+  P.paused = !P.paused;
+  this.classList.toggle('active', P.paused);
+  this.textContent = P.paused ? 'Resume' : 'Pause';
+});
+
+document.getElementById('btn-explode').addEventListener('click', () => {
+  const cx = W/2, cy = H/2;
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    const dx = b.x - cx, dy = b.y - cy;
+    const d  = Math.sqrt(dx*dx+dy*dy) || 1;
+    const f  = 1200 / d;
+    b.vx += (dx/d) * f * (0.7 + Math.random()*0.6);
+    b.vy += (dy/d) * f * (0.7 + Math.random()*0.6);
+  }
+});
+</script>
+</body>
+</html>

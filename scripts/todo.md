@@ -52,7 +52,7 @@
 - [x] 045 N-Body Gravity (Barnes-Hut tree, thousands of particles)
 - [x] 046 Terrain Erosion (hydraulic erosion on heightmap)
 - [x] 047 Smoke + Wind (velocity field advection, canvas)
-- [ ] 048 Elastic Collisions (2D rigid body, angle-based resolution)
+- [x] 048 Elastic Collisions (2D rigid body, angle-based resolution)
 
 ### Generative & Mathematical
 - [ ] 049 Flow Field (curl noise, particle advection, trails)
