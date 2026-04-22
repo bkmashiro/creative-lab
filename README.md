@@ -70,6 +70,8 @@
 | [046](demos/046-terrain-erosion.html) | Terrain Erosion | Canvas 2D, hydraulic erosion, droplet simulation, hillshading |
 | [047](demos/047-smoke-wind.html) | Smoke + Wind | Canvas 2D, semi-Lagrangian advection, curl noise turbulence, velocity field |
 | [048](demos/048-elastic-collisions.html) | Elastic Collisions | Canvas 2D, 2D rigid-body physics, angle-based collision resolution, spatial grid broadphase |
+| [049](demos/049-flow-field.html) | Flow Field | Canvas 2D, curl noise, particle advection, trails |
+| [050](demos/050-isosurface.html) | Isosurface | WebGL, marching cubes, 3D implicit surfaces, Phong shading |
 
 *More coming every 2 days →*
 

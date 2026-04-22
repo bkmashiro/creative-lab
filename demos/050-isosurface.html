@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#050 Isosurface — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#080c14;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#dde6f0}
+canvas{display:block;width:100vw;height:100vh;position:fixed;top:0;left:0}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(8,12,20,0.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(100,180,255,0.13);border-radius:12px;padding:14px 16px;min-width:250px;font-size:0.82rem}
+h1{font-size:0.7rem;letter-spacing:0.13em;text-transform:uppercase;color:#3a6a8a;margin-bottom:11px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.row label{width:100px;color:#90b0c8;flex-shrink:0;font-size:0.78rem}
+.row input[type=range]{flex:1;accent-color:#5ec8ff;cursor:pointer}
+.val{width:44px;text-align:right;color:#5ec8ff;font-size:0.74rem;font-variant-numeric:tabular-nums}
+.section{font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;color:#2e5570;margin:9px 0 4px;border-top:1px solid rgba(100,180,255,0.07);padding-top:7px}
+select{background:rgba(8,12,20,0.9);border:1px solid rgba(100,180,255,0.2);color:#5ec8ff;border-radius:6px;padding:3px 6px;font-size:0.76rem;cursor:pointer;width:100%}
+.check-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer}
+.check-row label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.check-row input{accent-color:#5ec8ff;cursor:pointer;width:13px;height:13px}
+.check-row span{color:#90b0c8;font-size:0.78rem}
+.btn-row{display:flex;gap:5px;margin-top:9px}
+button{flex:1;background:rgba(94,200,255,0.07);border:1px solid rgba(94,200,255,0.18);color:#5ec8ff;border-radius:6px;padding:5px 4px;font-size:0.74rem;cursor:pointer;transition:background .15s}
+button:hover{background:rgba(94,200,255,0.18)}
+#stats{position:fixed;top:16px;right:16px;z-index:10;background:rgba(8,12,20,0.78);backdrop-filter:blur(10px);border:1px solid rgba(100,180,255,0.09);border-radius:10px;padding:10px 14px;font-size:0.74rem;color:#5a7a8a;text-align:right;line-height:1.8}
+#stats span{color:#8ec0d8;font-variant-numeric:tabular-nums}
+#hint{position:fixed;bottom:36px;left:50%;transform:translateX(-50%);color:rgba(140,200,255,0.2);font-size:0.7rem;pointer-events:none;white-space:nowrap}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.18);font-size:0.7rem}
+footer a{color:rgba(255,255,255,0.26);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.52)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <h1>050 · Isosurface</h1>
+
+  <div class="section">Surface</div>
+  <div class="row"><label>Function</label>
+    <select id="sel-fn">
+      <option value="gyroid">Gyroid (TPMS)</option>
+      <option value="metaballs">Metaballs</option>
+      <option value="torus">Torus Knot</option>
+      <option value="schwarz">Schwarz P</option>
+      <option value="blobs">Pulsing Blobs</option>
+    </select>
+  </div>
+  <div class="row"><label>Isovalue</label><input type="range" id="s-iso" min="-100" max="100" value="0"><span class="val" id="v-iso">0.00</span></div>
+  <div class="row"><label>Resolution</label><input type="range" id="s-res" min="12" max="48" step="4" value="32"><span class="val" id="v-res">32</span></div>
+  <div class="row"><label>Scale</label><input type="range" id="s-scale" min="10" max="80" value="32"><span class="val" id="v-scale">3.2</span></div>
+
+  <div class="section">Appearance</div>
+  <div class="row"><label>Hue</label><input type="range" id="s-hue" min="0" max="360" value="200"><span class="val" id="v-hue">200</span></div>
+  <div class="row"><label>Shininess</label><input type="range" id="s-shine" min="1" max="128" value="40"><span class="val" id="v-shine">40</span></div>
+  <div class="row"><label>Opacity</label><input type="range" id="s-opacity" min="20" max="100" value="100"><span class="val" id="v-opacity">1.0</span></div>
+
+  <div class="section">Animation</div>
+  <div class="row"><label>Rotate speed</label><input type="range" id="s-rot" min="0" max="100" value="30"><span class="val" id="v-rot">0.30</span></div>
+  <div class="row"><label>Anim speed</label><input type="range" id="s-anim" min="0" max="100" value="20"><span class="val" id="v-anim">0.20</span></div>
+
+  <div class="check-row"><label><input type="checkbox" id="cb-wire"> <span>Wireframe overlay</span></label></div>
+  <div class="check-row"><label><input type="checkbox" id="cb-smooth" checked> <span>Smooth normals</span></label></div>
+
+  <div class="btn-row">
+    <button id="btn-pause">Pause</button>
+    <button id="btn-reset">Reset View</button>
+  </div>
+</div>
+
+<div id="stats">
+  Triangles <span id="st-tri">-</span><br>
+  Vertices <span id="st-vert">-</span><br>
+  FPS <span id="st-fps">-</span>
+</div>
+
+<div id="hint">Drag to orbit · Scroll to zoom</div>
+
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 050</footer>
+
+<script>
+// ─── Marching Cubes Tables ──────────────────────────────────────────────────
+const edgeTable = new Int32Array([
+  0x000,0x109,0x203,0x30a,0x406,0x50f,0x605,0x70c,
+  0x80c,0x905,0xa0f,0xb06,0xc0a,0xd03,0xe09,0xf00,
+  0x190,0x099,0x393,0x29a,0x596,0x49f,0x795,0x69c,
+  0x99c,0x895,0xb9f,0xa96,0xd9a,0xc93,0xf99,0xe90,
+  0x230,0x339,0x033,0x13a,0x636,0x73f,0x435,0x53c,
+  0xa3c,0xb35,0x83f,0x936,0xe3a,0xf33,0xc39,0xd30,
+  0x3a0,0x2a9,0x1a3,0x0aa,0x7a6,0x6af,0x5a5,0x4ac,
+  0xbac,0xaa5,0x9af,0x8a6,0xfaa,0xea3,0xda9,0xca0,
+  0x460,0x569,0x663,0x76a,0x066,0x16f,0x265,0x36c,
+  0xc6c,0xd65,0xe6f,0xf66,0x86a,0x963,0xa69,0xb60,
+  0x5f0,0x4f9,0x7f3,0x6fa,0x1f6,0x0ff,0x3f5,0x2fc,
+  0xdfc,0xcf5,0xfff,0xef6,0x9fa,0x8f3,0xbf9,0xaf0,
+  0x650,0x759,0x453,0x55a,0x256,0x35f,0x055,0x15c,
+  0xe5c,0xf55,0xc5f,0xd56,0xa5a,0xb53,0x859,0x950,
+  0x7c0,0x6c9,0x5c3,0x4ca,0x3c6,0x2cf,0x1c5,0x0cc,
+  0xfcc,0xec5,0xdcf,0xcc6,0xbca,0xac3,0x9c9,0x8c0,
+  0x8c0,0x9c9,0xac3,0xbca,0xcc6,0xdcf,0xec5,0xfcc,
+  0x0cc,0x1c5,0x2cf,0x3c6,0x4ca,0x5c3,0x6c9,0x7c0,
+  0x950,0x859,0xb53,0xa5a,0xd56,0xc5f,0xf55,0xe5c,
+  0x15c,0x055,0x35f,0x256,0x55a,0x453,0x759,0x650,
+  0xaf0,0xbf9,0x8f3,0x9fa,0xef6,0xfff,0xcf5,0xdfc,
+  0x2fc,0x3f5,0x0ff,0x1f6,0x6fa,0x7f3,0x4f9,0x5f0,
+  0xb60,0xa69,0x963,0x86a,0xf66,0xe6f,0xd65,0xc6c,
+  0x36c,0x265,0x16f,0x066,0x76a,0x663,0x569,0x460,
+  0xca0,0xda9,0xea3,0xfaa,0x8a6,0x9af,0xaa5,0xbac,
+  0x4ac,0x5a5,0x6af,0x7a6,0x0aa,0x1a3,0x2a9,0x3a0,
+  0xd30,0xc39,0xf33,0xe3a,0x936,0x83f,0xb35,0xa3c,
+  0x53c,0x435,0x73f,0x636,0x13a,0x033,0x339,0x230,
+  0xe90,0xf99,0xc93,0xd9a,0xa96,0xb9f,0x895,0x99c,
+  0x69c,0x795,0x49f,0x596,0x29a,0x393,0x099,0x190,
+  0xf00,0xe09,0xd03,0xc0a,0xb06,0xa0f,0x905,0x80c,
+  0x70c,0x605,0x50f,0x406,0x30a,0x203,0x109,0x000
+]);
+
+const triTable = [
+  [-1],
+  [0,8,3,-1],[0,1,9,-1],[1,8,3,9,8,1,-1],[1,2,10,-1],
+  [0,8,3,1,2,10,-1],[9,2,10,0,2,9,-1],[2,8,3,2,10,8,10,9,8,-1],
+  [3,11,2,-1],[0,11,2,8,11,0,-1],[1,9,0,2,3,11,-1],[1,11,2,1,9,11,9,8,11,-1],
+  [3,10,1,11,10,3,-1],[0,10,1,0,8,10,8,11,10,-1],[3,9,0,3,11,9,11,10,9,-1],[9,8,10,10,8,11,-1],
+  [4,7,8,-1],[4,3,0,7,3,4,-1],[0,1,9,8,4,7,-1],[4,1,9,4,7,1,7,3,1,-1],
+  [1,2,10,8,4,7,-1],[3,4,7,3,0,4,1,2,10,-1],[9,2,10,9,0,2,8,4,7,-1],[2,10,9,2,9,7,2,7,3,7,9,4,-1],
+  [8,4,7,3,11,2,-1],[11,4,7,11,2,4,2,0,4,-1],[9,0,1,8,4,7,2,3,11,-1],[4,7,11,9,4,11,9,11,2,9,2,1,-1],
+  [3,10,1,3,11,10,7,8,4,-1],[1,11,10,1,4,11,1,0,4,7,11,4,-1],[4,7,8,9,0,11,9,11,10,11,0,3,-1],[4,7,11,4,11,9,9,11,10,-1],
+  [9,5,4,-1],[9,5,4,0,8,3,-1],[0,5,4,1,5,0,-1],[8,5,4,8,3,5,3,1,5,-1],
+  [1,2,10,9,5,4,-1],[3,0,8,1,2,10,4,9,5,-1],[5,2,10,5,4,2,4,0,2,-1],[2,10,5,3,2,5,3,5,4,3,4,8,-1],
+  [9,5,4,2,3,11,-1],[0,11,2,0,8,11,4,9,5,-1],[0,5,4,0,1,5,2,3,11,-1],[2,1,5,2,5,8,2,8,11,4,8,5,-1],
+  [10,3,11,10,1,3,9,5,4,-1],[4,9,5,0,8,1,8,10,1,8,11,10,-1],[5,4,0,5,0,11,5,11,10,11,0,3,-1],[5,4,8,5,8,10,10,8,11,-1],
+  [9,7,8,5,7,9,-1],[9,3,0,9,5,3,5,7,3,-1],[0,7,8,0,1,7,1,5,7,-1],[1,5,3,3,5,7,-1],
+  [9,7,8,9,5,7,10,1,2,-1],[10,1,2,9,5,0,5,3,0,5,7,3,-1],[8,0,2,8,2,5,8,5,7,10,5,2,-1],[2,10,5,2,5,3,3,5,7,-1],
+  [7,9,5,7,8,9,3,11,2,-1],[9,5,7,9,7,2,9,2,0,2,7,11,-1],[2,3,11,0,1,8,1,7,8,1,5,7,-1],[11,2,1,11,1,7,7,1,5,-1],
+  [9,5,8,8,5,7,10,1,3,10,3,11,-1],[5,7,0,5,0,9,7,11,0,1,0,10,11,10,0,-1],[11,10,0,11,0,3,10,5,0,8,0,7,5,7,0,-1],[11,10,5,7,11,5,-1],
+  [10,6,5,-1],[0,8,3,5,10,6,-1],[9,0,1,5,10,6,-1],[1,8,3,1,9,8,5,10,6,-1],
+  [1,6,5,2,6,1,-1],[1,6,5,1,2,6,3,0,8,-1],[9,6,5,9,0,6,0,2,6,-1],[5,9,8,5,8,2,5,2,6,3,2,8,-1],
+  [2,3,11,10,6,5,-1],[11,0,8,11,2,0,10,6,5,-1],[0,1,9,2,3,11,5,10,6,-1],[5,10,6,1,9,2,9,11,2,9,8,11,-1],
+  [6,3,11,6,5,3,5,1,3,-1],[0,8,11,0,11,5,0,5,1,5,11,6,-1],[3,11,6,0,3,6,0,6,5,0,5,9,-1],[6,5,9,6,9,11,11,9,8,-1],
+  [5,10,6,4,7,8,-1],[4,3,0,4,7,3,6,5,10,-1],[1,9,0,5,10,6,8,4,7,-1],[10,6,5,1,9,7,1,7,3,7,9,4,-1],
+  [6,1,2,6,5,1,4,7,8,-1],[1,2,5,5,2,6,3,0,4,3,4,7,-1],[8,4,7,9,0,5,0,6,5,0,2,6,-1],[7,3,9,7,9,4,3,2,9,5,9,6,2,6,9,-1],
+  [3,11,2,7,8,4,10,6,5,-1],[5,10,6,4,7,2,4,2,0,2,7,11,-1],[0,1,9,4,7,8,2,3,11,5,10,6,-1],[9,2,1,9,11,2,9,4,11,7,11,4,5,10,6,-1],
+  [8,4,7,3,11,5,3,5,1,5,11,6,-1],[5,1,11,5,11,6,1,0,11,7,11,4,0,4,11,-1],[0,5,9,0,6,5,0,3,6,11,6,3,8,4,7,-1],[6,5,9,6,9,11,4,7,9,7,11,9,-1],
+  [10,4,9,6,4,10,-1],[4,10,6,4,9,10,0,8,3,-1],[10,0,1,10,6,0,6,4,0,-1],[8,3,1,8,1,6,8,6,4,6,1,10,-1],
+  [1,4,9,1,2,4,2,6,4,-1],[3,0,8,1,2,9,2,4,9,2,6,4,-1],[0,2,4,4,2,6,-1],[8,3,2,8,2,4,4,2,6,-1],
+  [10,4,9,10,6,4,11,2,3,-1],[0,8,2,2,8,11,4,9,10,4,10,6,-1],[3,11,2,0,1,6,0,6,4,6,1,10,-1],[6,4,1,6,1,10,4,8,1,2,1,11,8,11,1,-1],
+  [9,6,4,9,3,6,9,1,3,11,6,3,-1],[8,11,1,8,1,0,11,6,1,9,1,4,6,4,1,-1],[3,11,6,3,6,0,0,6,4,-1],[6,4,8,11,6,8,-1],
+  [7,10,6,7,8,10,8,9,10,-1],[0,7,3,0,10,7,0,9,10,6,7,10,-1],[10,6,7,1,10,7,1,7,8,1,8,0,-1],[10,6,7,10,7,1,1,7,3,-1],
+  [1,2,6,1,6,8,1,8,9,8,6,7,-1],[2,6,9,2,9,1,6,7,9,0,9,3,7,3,9,-1],[7,8,0,7,0,6,6,0,2,-1],[7,3,2,6,7,2,-1],
+  [2,3,11,10,6,8,10,8,9,8,6,7,-1],[2,0,7,2,7,11,0,9,7,6,7,10,9,10,7,-1],[1,8,0,1,7,8,1,10,7,6,7,10,2,3,11,-1],[11,2,1,11,1,7,10,6,1,6,7,1,-1],
+  [8,9,1,8,1,3,9,10,1,11,1,7,10,7,1,-1],[0,9,1,11,6,7,-1],[7,8,0,7,0,6,3,11,0,11,6,0,-1],[7,11,6,-1],
+  [7,6,11,-1],[3,0,8,11,7,6,-1],[0,1,9,11,7,6,-1],[8,1,9,8,3,1,11,7,6,-1],
+  [10,1,2,6,11,7,-1],[1,2,10,3,0,8,6,11,7,-1],[2,9,0,2,10,9,6,11,7,-1],[6,11,7,2,10,3,10,8,3,10,9,8,-1],
+  [7,2,3,6,2,7,-1],[7,0,8,7,6,0,6,2,0,-1],[2,7,6,2,3,7,0,1,9,-1],[1,6,2,1,8,6,1,9,8,8,7,6,-1],
+  [10,7,6,10,1,7,1,3,7,-1],[10,7,6,1,7,10,1,8,7,1,0,8,-1],[0,3,7,0,7,10,0,10,9,6,10,7,-1],[7,6,10,7,10,8,8,10,9,-1],
+  [6,8,4,11,8,6,-1],[3,6,11,3,0,6,0,4,6,-1],[8,6,11,8,4,6,9,0,1,-1],[9,4,6,9,6,3,9,3,1,11,3,6,-1],
+  [6,8,4,6,11,8,2,10,1,-1],[1,2,10,3,0,11,0,6,11,0,4,6,-1],[4,11,8,4,6,11,0,2,9,2,10,9,-1],[10,9,3,10,3,2,9,4,3,11,3,6,4,6,3,-1],
+  [8,2,3,8,4,2,4,6,2,-1],[0,4,2,4,6,2,-1],[1,9,0,2,3,4,2,4,6,4,3,8,-1],[1,9,4,1,4,2,2,4,6,-1],
+  [8,1,3,8,6,1,8,4,6,6,10,1,-1],[10,1,0,10,0,6,6,0,4,-1],[4,6,3,4,3,8,6,10,3,0,3,9,10,9,3,-1],[10,9,4,6,10,4,-1],
+  [4,9,5,7,6,11,-1],[0,8,3,4,9,5,11,7,6,-1],[5,0,1,5,4,0,7,6,11,-1],[11,7,6,8,3,4,3,5,4,3,1,5,-1],
+  [9,5,4,10,1,2,7,6,11,-1],[6,11,7,1,2,10,0,8,3,4,9,5,-1],[7,6,11,5,4,10,4,2,10,4,0,2,-1],[3,4,8,3,5,4,3,2,5,10,5,2,11,7,6,-1],
+  [7,2,3,7,6,2,5,4,9,-1],[9,5,4,0,8,6,0,6,2,6,8,7,-1],[3,6,2,3,7,6,1,5,0,5,4,0,-1],[6,2,8,6,8,7,2,1,8,4,8,5,1,5,8,-1],
+  [9,5,4,10,1,6,1,7,6,1,3,7,-1],[1,6,10,1,7,6,1,0,7,8,7,0,9,5,4,-1],[4,0,10,4,10,5,0,3,10,6,10,7,3,7,10,-1],[7,6,10,7,10,8,5,4,10,4,8,10,-1],
+  [6,9,5,6,11,9,11,8,9,-1],[3,6,11,0,6,3,0,5,6,0,9,5,-1],[0,11,8,0,5,11,0,1,5,5,6,11,-1],[6,11,3,6,3,5,5,3,1,-1],
+  [1,2,10,9,5,11,9,11,8,11,5,6,-1],[0,11,3,0,6,11,0,9,6,5,6,9,1,2,10,-1],[11,8,5,11,5,6,8,0,5,10,5,2,0,2,5,-1],[6,11,3,6,3,5,2,10,3,10,5,3,-1],
+  [5,8,9,5,2,8,5,6,2,3,8,2,-1],[9,5,6,9,6,0,0,6,2,-1],[1,5,8,1,8,0,5,6,8,3,8,2,6,2,8,-1],[1,5,6,2,1,6,-1],
+  [1,3,6,1,6,10,3,8,6,5,6,9,8,9,6,-1],[10,1,0,10,0,6,9,5,0,5,6,0,-1],[0,3,8,5,6,10,-1],[10,5,6,-1],
+  [11,5,10,7,5,11,-1],[11,5,10,11,7,5,8,3,0,-1],[5,11,7,5,10,11,1,9,0,-1],[10,7,5,10,11,7,9,8,1,8,3,1,-1],
+  [11,1,2,11,7,1,7,5,1,-1],[0,8,3,1,2,7,1,7,5,7,2,11,-1],[9,7,5,9,2,7,9,0,2,2,11,7,-1],[7,5,2,7,2,11,5,9,2,3,2,8,9,8,2,-1],
+  [2,5,10,2,3,5,3,7,5,-1],[8,2,0,8,5,2,8,7,5,10,2,5,-1],[9,0,1,2,3,5,2,5,10,5,3,7,-1],[9,8,2,9,2,1,8,7,2,10,2,5,7,5,2,-1],
+  [1,3,5,3,7,5,-1],[0,8,7,0,7,1,1,7,5,-1],[9,0,3,9,3,5,5,3,7,-1],[9,8,7,5,9,7,-1],
+  [5,8,4,5,10,8,10,11,8,-1],[5,0,4,5,11,0,5,10,11,11,3,0,-1],[0,1,9,8,4,10,8,10,11,10,4,5,-1],[10,11,4,10,4,5,11,3,4,9,4,1,3,1,4,-1],
+  [2,5,1,2,8,5,2,11,8,4,5,8,-1],[0,4,11,0,11,3,4,5,11,2,11,1,5,1,11,-1],[0,2,5,0,5,9,2,11,5,4,5,8,11,8,5,-1],[9,4,5,2,11,3,-1],
+  [2,5,10,3,5,2,3,4,5,3,8,4,-1],[5,10,2,5,2,4,4,2,0,-1],[3,10,2,3,5,10,3,8,5,4,5,8,0,1,9,-1],[5,10,2,5,2,4,1,9,2,9,4,2,-1],
+  [8,4,5,8,5,3,3,5,1,-1],[0,4,5,1,0,5,-1],[8,4,5,8,5,3,9,0,5,0,3,5,-1],[9,4,5,-1],
+  [4,11,7,4,9,11,9,10,11,-1],[0,8,3,4,9,7,9,11,7,9,10,11,-1],[1,10,11,1,11,4,1,4,0,7,4,11,-1],[3,1,4,3,4,8,1,10,4,7,4,11,10,11,4,-1],
+  [4,11,7,9,11,4,9,2,11,9,1,2,-1],[9,7,4,9,11,7,9,1,11,2,11,1,0,8,3,-1],[11,7,4,11,4,2,2,4,0,-1],[11,7,4,11,4,2,8,3,4,3,2,4,-1],
+  [2,9,10,2,7,9,2,3,7,7,4,9,-1],[9,10,7,9,7,4,10,2,7,8,7,0,2,0,7,-1],[3,7,10,3,10,2,7,4,10,1,10,0,4,0,10,-1],[1,10,2,8,7,4,-1],
+  [4,9,1,4,1,7,7,1,3,-1],[4,9,1,4,1,7,0,8,1,8,7,1,-1],[4,0,3,7,4,3,-1],[4,8,7,-1],
+  [9,10,8,10,11,8,-1],[3,0,9,3,9,11,11,9,10,-1],[0,1,10,0,10,8,8,10,11,-1],[3,1,10,11,3,10,-1],
+  [1,2,11,1,11,9,9,11,8,-1],[3,0,9,3,9,11,1,2,9,2,11,9,-1],[0,2,11,8,0,11,-1],[3,2,11,-1],
+  [2,3,8,2,8,10,10,8,9,-1],[9,10,2,0,9,2,-1],[2,3,8,2,8,10,0,1,8,1,10,8,-1],[1,10,2,-1],
+  [1,3,8,9,1,8,-1],[0,9,1,-1],[0,3,8,-1],[-1]
+];
+
+// ─── WebGL Setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', {antialias: true, alpha: false});
+if (!gl) { document.body.innerHTML = '<p style="color:red;padding:2rem">WebGL not supported</p>'; throw new Error('no webgl'); }
+
+const vsrc = `
+attribute vec3 aPos;
+attribute vec3 aNorm;
+uniform mat4 uMVP;
+uniform mat4 uMV;
+uniform mat3 uNM;
+varying vec3 vNorm;
+varying vec3 vPos;
+void main(){
+  vec4 mv = uMV * vec4(aPos,1.0);
+  vPos = mv.xyz;
+  vNorm = normalize(uNM * aNorm);
+  gl_Position = uMVP * vec4(aPos,1.0);
+}`;
+
+const fsrc = `
+precision mediump float;
+varying vec3 vNorm;
+varying vec3 vPos;
+uniform vec3 uColor;
+uniform float uShininess;
+uniform float uOpacity;
+void main(){
+  vec3 N = normalize(vNorm);
+  vec3 L1 = normalize(vec3(1.5, 2.0, 2.0) - vPos);
+  vec3 L2 = normalize(vec3(-2.0, -1.0, 1.5) - vPos);
+  vec3 V = normalize(-vPos);
+  float d1 = max(dot(N,L1),0.0);
+  float d2 = max(dot(N,L2),0.0)*0.4;
+  vec3 R1 = reflect(-L1,N);
+  float s1 = pow(max(dot(R1,V),0.0), uShininess);
+  vec3 col = uColor*(0.15 + d1*0.75 + d2) + vec3(1.0)*s1*0.7;
+  gl_FragColor = vec4(col, uOpacity);
+}`;
+
+const wsrc = `
+precision mediump float;
+varying vec3 vNorm;
+varying vec3 vPos;
+void main(){
+  gl_FragColor = vec4(0.4,0.8,1.0,0.3);
+}`;
+
+function compile(type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(sh);
+  return sh;
+}
+function program(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw gl.getProgramInfoLog(p);
+  return p;
+}
+
+const prog = program(vsrc, fsrc);
+const wprog = program(vsrc, wsrc);
+
+const posLoc = gl.getAttribLocation(prog, 'aPos');
+const normLoc = gl.getAttribLocation(prog, 'aNorm');
+const wPosLoc = gl.getAttribLocation(wprog, 'aPos');
+const wNormLoc = gl.getAttribLocation(wprog, 'aNorm');
+
+const posBuf = gl.createBuffer();
+const normBuf = gl.createBuffer();
+
+// ─── Matrix helpers ─────────────────────────────────────────────────────────
+function mat4() { return new Float32Array(16); }
+function identity(m) {
+  m[0]=m[5]=m[10]=m[15]=1;
+  m[1]=m[2]=m[3]=m[4]=m[6]=m[7]=m[8]=m[9]=m[11]=m[12]=m[13]=m[14]=0;
+  return m;
+}
+function perspective(m, fov, asp, near, far) {
+  const f = 1/Math.tan(fov/2), d = far - near;
+  m[0]=f/asp; m[1]=0; m[2]=0; m[3]=0;
+  m[4]=0; m[5]=f; m[6]=0; m[7]=0;
+  m[8]=0; m[9]=0; m[10]=-(far+near)/d; m[11]=-1;
+  m[12]=0; m[13]=0; m[14]=-2*far*near/d; m[15]=0;
+  return m;
+}
+function multiply(out, a, b) {
+  for (let i=0;i<4;i++) for (let j=0;j<4;j++) {
+    let s=0; for (let k=0;k<4;k++) s+=a[i*4+k]*b[k*4+j];
+    out[i*4+j]=s;
+  }
+  return out;
+}
+function rotX(m,a){const c=Math.cos(a),s=Math.sin(a);identity(m);m[5]=c;m[6]=s;m[9]=-s;m[10]=c;return m;}
+function rotY(m,a){const c=Math.cos(a),s=Math.sin(a);identity(m);m[0]=c;m[2]=-s;m[8]=s;m[10]=c;return m;}
+function translate(m,x,y,z){identity(m);m[12]=x;m[13]=y;m[14]=z;return m;}
+
+// ─── Scalar field functions ──────────────────────────────────────────────────
+const fields = {
+  gyroid: (x,y,z,t) => Math.sin(x)*Math.cos(y) + Math.sin(y)*Math.cos(z) + Math.sin(z)*Math.cos(x),
+  metaballs: (x,y,z,t) => {
+    const balls = [
+      [Math.sin(t*0.7)*0.6, Math.cos(t*0.5)*0.6, Math.sin(t*0.9)*0.3],
+      [Math.cos(t*0.8)*0.5, Math.sin(t*0.6)*0.5, Math.cos(t*0.7)*0.5],
+      [Math.sin(t*0.5+1)*0.7, Math.cos(t*0.9+2)*0.4, Math.sin(t*0.6+3)*0.6],
+      [Math.cos(t*0.6+4)*0.4, Math.sin(t*0.7+5)*0.7, Math.cos(t*0.8+6)*0.4],
+    ];
+    let v = 0;
+    for (const [bx,by,bz] of balls) {
+      const d2 = (x-bx)*(x-bx)+(y-by)*(y-by)+(z-bz)*(z-bz);
+      v += 0.08/(d2+0.001);
+    }
+    return v - 1.0;
+  },
+  torus: (x,y,z,t) => {
+    const R=0.6, r=0.28;
+    const q = Math.sqrt(x*x+y*y)-R;
+    return q*q+z*z - r*r;
+  },
+  schwarz: (x,y,z,t) => Math.cos(x) + Math.cos(y) + Math.cos(z),
+  blobs: (x,y,z,t) => {
+    const f = Math.sin(t*0.4);
+    return Math.sin(x*2+t)*Math.sin(y*2+t*0.7)*Math.sin(z*2+t*0.5) + f*0.3
+      - (x*x+y*y+z*z)*0.6 + 0.5;
+  }
+};
+
+// ─── Marching Cubes ──────────────────────────────────────────────────────────
+// Corner offsets: 0=(0,0,0) 1=(1,0,0) 2=(1,1,0) 3=(0,1,0)
+//                 4=(0,0,1) 5=(1,0,1) 6=(1,1,1) 7=(0,1,1)
+const COFF = [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];
+const EPAIRS = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+
+function lerp3(a, b, va, vb, iso) {
+  const t = (iso - va) / (vb - va + 1e-10);
+  return [a[0]+t*(b[0]-a[0]), a[1]+t*(b[1]-a[1]), a[2]+t*(b[2]-a[2])];
+}
+
+function buildMesh(fieldName, res, iso, scale, time, smoothNormals) {
+  const fn = fields[fieldName];
+  const h = 2*scale/res;
+  const N = res+1;
+  // Evaluate scalar field
+  const vals = new Float32Array(N*N*N);
+  for (let iz=0;iz<N;iz++)
+  for (let iy=0;iy<N;iy++)
+  for (let ix=0;ix<N;ix++) {
+    const x = -scale + ix*h, y = -scale + iy*h, z = -scale + iz*h;
+    vals[ix + N*(iy + N*iz)] = fn(x,y,z,time);
+  }
+
+  const positions = [];
+  const normals = [];
+
+  for (let iz=0;iz<res;iz++)
+  for (let iy=0;iy<res;iy++)
+  for (let ix=0;ix<res;ix++) {
+    // 8 corner values
+    let cubeIdx = 0;
+    const cv = new Float32Array(8);
+    const cp = [];
+    for (let i=0;i<8;i++) {
+      const cx=ix+COFF[i][0], cy=iy+COFF[i][1], cz=iz+COFF[i][2];
+      const v = vals[cx + N*(cy + N*cz)];
+      cv[i] = v;
+      if (v < iso) cubeIdx |= (1<<i);
+      cp.push([-scale+cx*h, -scale+cy*h, -scale+cz*h]);
+    }
+    const et = edgeTable[cubeIdx];
+    if (et === 0) continue;
+
+    // Interpolate edge vertices
+    const ev = [];
+    for (let e=0;e<12;e++) {
+      if (et & (1<<e)) {
+        const [a,b] = EPAIRS[e];
+        ev[e] = lerp3(cp[a], cp[b], cv[a], cv[b], iso);
+      }
+    }
+
+    // Generate triangles
+    const tris = triTable[cubeIdx];
+    for (let t=0; t<tris.length; t+=3) {
+      if (tris[t] < 0) break;
+      const v0=ev[tris[t]], v1=ev[tris[t+1]], v2=ev[tris[t+2]];
+      if (!v0||!v1||!v2) continue;
+      positions.push(...v0,...v1,...v2);
+
+      if (smoothNormals) {
+        // Gradient normal per vertex
+        const eps = h*0.5;
+        for (const vp of [v0,v1,v2]) {
+          const nx = fn(vp[0]+eps,vp[1],vp[2],time) - fn(vp[0]-eps,vp[1],vp[2],time);
+          const ny = fn(vp[0],vp[1]+eps,vp[2],time) - fn(vp[0],vp[1]-eps,vp[2],time);
+          const nz = fn(vp[0],vp[1],vp[2]+eps,time) - fn(vp[0],vp[1],vp[2]-eps,time);
+          const nl = Math.sqrt(nx*nx+ny*ny+nz*nz)+1e-10;
+          normals.push(nx/nl, ny/nl, nz/nl);
+        }
+      } else {
+        // Face normal
+        const ax=v1[0]-v0[0],ay=v1[1]-v0[1],az=v1[2]-v0[2];
+        const bx=v2[0]-v0[0],by=v2[1]-v0[1],bz=v2[2]-v0[2];
+        const nx=ay*bz-az*by, ny=az*bx-ax*bz, nz=ax*by-ay*bx;
+        const nl=Math.sqrt(nx*nx+ny*ny+nz*nz)+1e-10;
+        for (let i=0;i<3;i++) normals.push(nx/nl, ny/nl, nz/nl);
+      }
+    }
+  }
+  return { positions: new Float32Array(positions), normals: new Float32Array(normals) };
+}
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let mesh = { positions: new Float32Array(0), normals: new Float32Array(0) };
+let dirty = true;
+let paused = false;
+let time = 0;
+let rotX_angle = 0.4, rotY_angle = 0;
+let autoRotSpeed = 0.003;
+let animSpeed = 0.002;
+let zoom = 3.0;
+let hue = 200, shininess = 40, opacity = 1.0;
+let fieldName = 'gyroid';
+let iso = 0, res = 32, scale = 3.2;
+let wireframe = false, smoothNormals = true;
+
+// Mouse orbit
+let drag = false, lastX = 0, lastY = 0;
+canvas.addEventListener('mousedown', e => { drag=true; lastX=e.clientX; lastY=e.clientY; });
+window.addEventListener('mouseup', () => drag=false);
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  rotY_angle += (e.clientX-lastX)*0.01;
+  rotX_angle += (e.clientY-lastY)*0.01;
+  lastX=e.clientX; lastY=e.clientY;
+});
+canvas.addEventListener('wheel', e => { zoom *= 1+e.deltaY*0.001; zoom=Math.max(1,Math.min(8,zoom)); e.preventDefault(); }, {passive:false});
+
+// Touch orbit
+let lastTouchX=0, lastTouchY=0;
+canvas.addEventListener('touchstart', e => { lastTouchX=e.touches[0].clientX; lastTouchY=e.touches[0].clientY; e.preventDefault(); }, {passive:false});
+canvas.addEventListener('touchmove', e => {
+  rotY_angle += (e.touches[0].clientX-lastTouchX)*0.012;
+  rotX_angle += (e.touches[0].clientY-lastTouchY)*0.012;
+  lastTouchX=e.touches[0].clientX; lastTouchY=e.touches[0].clientY;
+  e.preventDefault();
+}, {passive:false});
+
+// UI bindings
+function bind(id, valId, fn, fmt) {
+  const el = document.getElementById(id), vEl = document.getElementById(valId);
+  el.addEventListener('input', () => { const v=fn(+el.value); vEl.textContent=fmt(v); dirty=true; });
+}
+document.getElementById('sel-fn').addEventListener('change', e => { fieldName=e.target.value; dirty=true; });
+bind('s-iso','v-iso', v=>{iso=v/100; return iso;}, v=>v.toFixed(2));
+bind('s-res','v-res', v=>{res=v; return v;}, v=>v);
+bind('s-scale','v-scale', v=>{scale=v/10; return scale;}, v=>v.toFixed(1));
+bind('s-hue','v-hue', v=>{hue=v; return v;}, v=>v);
+bind('s-shine','v-shine', v=>{shininess=v; return v;}, v=>v);
+bind('s-opacity','v-opacity', v=>{opacity=v/100; return opacity;}, v=>v.toFixed(1));
+bind('s-rot','v-rot', v=>{autoRotSpeed=v/10000; return v/100;}, v=>v.toFixed(2));
+bind('s-anim','v-anim', v=>{animSpeed=v/10000; return v/100;}, v=>v.toFixed(2));
+document.getElementById('cb-wire').addEventListener('change', e => wireframe=e.target.checked);
+document.getElementById('cb-smooth').addEventListener('change', e => { smoothNormals=e.target.checked; dirty=true; });
+document.getElementById('btn-pause').addEventListener('click', function(){ paused=!paused; this.textContent=paused?'Resume':'Pause'; });
+document.getElementById('btn-reset').addEventListener('click', () => { rotX_angle=0.4; rotY_angle=0; zoom=3.0; });
+
+// ─── Render loop ─────────────────────────────────────────────────────────────
+const pMat=mat4(), mvMat=mat4(), mvpMat=mat4(), rXm=mat4(), rYm=mat4(), tMat=mat4(), tmp=mat4();
+const nmMat=new Float32Array(9);
+
+let lastTime=0, fps=0, fpsSmooth=60;
+let rebuildTimer = 0;
+
+function resize() {
+  canvas.width = canvas.clientWidth * devicePixelRatio;
+  canvas.height = canvas.clientHeight * devicePixelRatio;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function hslToRgb(h,s,l) {
+  h/=360; s/=100; l/=100;
+  const q=l<0.5?l*(1+s):l+s-l*s, p=2*l-q;
+  const hue2rgb=(p,q,t)=>{ if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p; };
+  return [hue2rgb(p,q,h+1/3), hue2rgb(p,q,h), hue2rgb(p,q,h-1/3)];
+}
+
+function render(now) {
+  requestAnimationFrame(render);
+  const dt = Math.min((now-lastTime)/1000, 0.05);
+  lastTime = now;
+  fpsSmooth += (1/Math.max(dt,0.001) - fpsSmooth)*0.05;
+
+  if (!paused) {
+    time += dt * animSpeed * 1000;
+    rotY_angle += autoRotSpeed * 60 * dt;
+    if ((fieldName==='metaballs'||fieldName==='blobs') && !paused) {
+      rebuildTimer += dt;
+      if (rebuildTimer > 0.05) { dirty=true; rebuildTimer=0; }
+    }
+  }
+
+  if (dirty) {
+    mesh = buildMesh(fieldName, res, iso, scale, time, smoothNormals);
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, mesh.positions, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, normBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, mesh.normals, gl.DYNAMIC_DRAW);
+    dirty = false;
+
+    const tri = mesh.positions.length/9;
+    document.getElementById('st-tri').textContent = tri.toLocaleString();
+    document.getElementById('st-vert').textContent = (tri*3).toLocaleString();
+  }
+
+  document.getElementById('st-fps').textContent = fpsSmooth.toFixed(0);
+
+  const W=canvas.width, H=canvas.height;
+  gl.viewport(0,0,W,H);
+  gl.clearColor(0.031,0.047,0.078,1);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+  if (opacity < 1) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); }
+  else gl.disable(gl.BLEND);
+
+  perspective(pMat, Math.PI/4, W/H, 0.1, 100);
+  translate(tMat, 0, 0, -zoom);
+  rotX(rXm, rotX_angle);
+  rotY(rYm, rotY_angle);
+  multiply(tmp, rXm, rYm);
+  multiply(mvMat, tMat, tmp);
+  multiply(mvpMat, pMat, mvMat);
+
+  // Normal matrix (upper-left 3x3 of MV, transposed inverse = just upper-left for uniform scale)
+  for (let i=0;i<3;i++) for (let j=0;j<3;j++) nmMat[i*3+j]=mvMat[i*4+j];
+
+  const nTri = mesh.positions.length/3;
+  if (nTri === 0) return;
+
+  // Main shaded pass
+  gl.useProgram(prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.enableVertexAttribArray(posLoc);
+  gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, normBuf);
+  gl.enableVertexAttribArray(normLoc);
+  gl.vertexAttribPointer(normLoc, 3, gl.FLOAT, false, 0, 0);
+
+  gl.uniformMatrix4fv(gl.getUniformLocation(prog,'uMVP'), false, mvpMat);
+  gl.uniformMatrix4fv(gl.getUniformLocation(prog,'uMV'), false, mvMat);
+  gl.uniformMatrix3fv(gl.getUniformLocation(prog,'uNM'), false, nmMat);
+  const [r,g,b] = hslToRgb(hue, 70, 55);
+  gl.uniform3f(gl.getUniformLocation(prog,'uColor'), r, g, b);
+  gl.uniform1f(gl.getUniformLocation(prog,'uShininess'), shininess);
+  gl.uniform1f(gl.getUniformLocation(prog,'uOpacity'), opacity);
+  gl.drawArrays(gl.TRIANGLES, 0, nTri);
+
+  // Wireframe overlay
+  if (wireframe) {
+    gl.useProgram(wprog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+    gl.enableVertexAttribArray(wPosLoc);
+    gl.vertexAttribPointer(wPosLoc, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, normBuf);
+    gl.enableVertexAttribArray(wNormLoc);
+    gl.vertexAttribPointer(wNormLoc, 3, gl.FLOAT, false, 0, 0);
+    gl.uniformMatrix4fv(gl.getUniformLocation(wprog,'uMVP'), false, mvpMat);
+    gl.uniformMatrix4fv(gl.getUniformLocation(wprog,'uMV'), false, mvMat);
+    gl.uniformMatrix3fv(gl.getUniformLocation(wprog,'uNM'), false, nmMat);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.drawArrays(gl.LINES, 0, nTri);
+    if (opacity>=1) gl.disable(gl.BLEND);
+  }
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
