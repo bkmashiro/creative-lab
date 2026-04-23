@@ -57,7 +57,7 @@
 ### Generative & Mathematical
 - [x] 049 Flow Field (curl noise, particle advection, trails)
 - [x] 050 Isosurface (marching cubes, 3D implicit surface, WebGL)
-- [ ] 051 Cellular Noise (Worley/F1 noise, organic texture, WebGL)
+- [x] 051 Cellular Noise (Worley/F1 noise, organic texture, WebGL)
 - [ ] 052 Strange Attractors (Halvorsen, Aizawa, Thomas — 3D projection)
 - [ ] 053 Spirograph (hypotrochoid/epitrochoid, parametric, interactive)
 - [ ] 054 Turtle Graphics (recursive L-systems, dragon curve, Hilbert)

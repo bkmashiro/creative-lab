@@ -72,6 +72,7 @@
 | [048](demos/048-elastic-collisions.html) | Elastic Collisions | Canvas 2D, 2D rigid-body physics, angle-based collision resolution, spatial grid broadphase |
 | [049](demos/049-flow-field.html) | Flow Field | Canvas 2D, curl noise, particle advection, trails |
 | [050](demos/050-isosurface.html) | Isosurface | WebGL, marching cubes, 3D implicit surfaces, Phong shading |
+| [051](demos/051-cellular-noise.html) | Cellular Noise | WebGL, Worley/F1 noise, Voronoi, multiple distance metrics, animated feature points |
 
 *More coming every 2 days →*
 
