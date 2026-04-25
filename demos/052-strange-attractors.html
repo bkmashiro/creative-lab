@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#052 Strange Attractors — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#060609;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#d4dce8}
+canvas{display:block;width:100vw;height:100vh;position:fixed;top:0;left:0}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(6,6,12,0.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(160,140,255,0.14);border-radius:13px;padding:14px 16px;min-width:252px;font-size:0.82rem}
+h1{font-size:0.68rem;letter-spacing:0.15em;text-transform:uppercase;color:#6048b0;margin-bottom:10px}
+.section{font-size:0.64rem;letter-spacing:0.11em;text-transform:uppercase;color:#3a2870;margin:10px 0 5px;border-top:1px solid rgba(160,140,255,0.07);padding-top:8px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.row label{width:100px;color:#8880b0;flex-shrink:0;font-size:0.77rem}
+.row input[type=range]{flex:1;accent-color:#a080ff;cursor:pointer}
+.val{width:42px;text-align:right;color:#a080ff;font-size:0.73rem;font-variant-numeric:tabular-nums}
+.btn-row{display:flex;gap:5px;margin-top:10px}
+button{flex:1;background:rgba(160,128,255,0.07);border:1px solid rgba(160,128,255,0.2);color:#a080ff;border-radius:7px;padding:5px 3px;font-size:0.73rem;cursor:pointer;transition:background .15s,border-color .15s}
+button:hover{background:rgba(160,128,255,0.18)}
+button.active{background:rgba(160,128,255,0.24);border-color:rgba(160,128,255,0.42);color:#c8a8ff}
+.attractor-row{display:flex;gap:5px;margin-bottom:4px}
+.attractor-row button{font-size:0.72rem;padding:5px 4px}
+#info{position:fixed;top:16px;right:16px;z-index:10;background:rgba(6,6,12,0.82);backdrop-filter:blur(12px);border:1px solid rgba(160,140,255,0.09);border-radius:11px;padding:11px 16px;font-size:0.73rem;color:#5a5080;text-align:right;line-height:2}
+#info span{color:#9080c8;font-variant-numeric:tabular-nums}
+#hint{position:fixed;bottom:36px;left:50%;transform:translateX(-50%);color:rgba(160,140,255,0.18);font-size:0.7rem;pointer-events:none;white-space:nowrap}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.15);font-size:0.7rem}
+footer a{color:rgba(255,255,255,0.22);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.5)}
+.eq{margin-top:6px;font-size:0.68rem;color:#4a3888;line-height:1.55;font-family:monospace}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <h1>052 · Strange Attractors</h1>
+
+  <div class="attractor-row">
+    <button class="active" id="btn-halvorsen">Halvorsen</button>
+    <button id="btn-aizawa">Aizawa</button>
+    <button id="btn-thomas">Thomas</button>
+  </div>
+
+  <div class="eq" id="eq-text">
+    ẋ = −ax − 4y − 4z − y²<br>
+    ẏ = −ay − 4z − 4x − z²<br>
+    ż = −az − 4x − 4y − x²
+  </div>
+
+  <div class="section">Simulation</div>
+  <div class="row"><label>Trails</label><input type="range" id="s-trail" min="100" max="3000" step="100" value="800"><span class="val" id="v-trail">800</span></div>
+  <div class="row"><label>Step size</label><input type="range" id="s-step" min="1" max="40" value="8"><span class="val" id="v-step">0.008</span></div>
+  <div class="row"><label>Particles</label><input type="range" id="s-parts" min="1" max="12" value="6"><span class="val" id="v-parts">6</span></div>
+  <div class="row"><label>Fade</label><input type="range" id="s-fade" min="1" max="30" value="8"><span class="val" id="v-fade">0.08</span></div>
+
+  <div class="section">View</div>
+  <div class="row"><label>Zoom</label><input type="range" id="s-zoom" min="20" max="200" value="80"><span class="val" id="v-zoom">80</span></div>
+  <div class="row"><label>Rotation spd</label><input type="range" id="s-rotspd" min="0" max="100" value="12"><span class="val" id="v-rotspd">0.12</span></div>
+  <div class="row"><label>Point size</label><input type="range" id="s-psize" min="1" max="8" value="2"><span class="val" id="v-psize">2</span></div>
+
+  <div class="section">Color</div>
+  <div class="row"><label>Hue base</label><input type="range" id="s-hue" min="0" max="360" value="260"><span class="val" id="v-hue">260</span></div>
+  <div class="row"><label>Hue range</label><input type="range" id="s-hrange" min="0" max="200" value="80"><span class="val" id="v-hrange">80</span></div>
+
+  <div class="btn-row">
+    <button id="btn-reset">Reset</button>
+    <button id="btn-pause">Pause</button>
+    <button id="btn-axes">Axes</button>
+  </div>
+</div>
+
+<div id="info">
+  Attractor <span id="st-name">Halvorsen</span><br>
+  Points <span id="st-pts">—</span><br>
+  FPS <span id="st-fps">—</span><br>
+  θ <span id="st-rot">—</span>
+</div>
+
+<div id="hint">Drag to rotate · Scroll to zoom · Click attractor buttons to switch</div>
+
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 052</footer>
+
+<script>
+// ─── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, cx, cy;
+function resize(){
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  cx = W/2; cy = H/2;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── Attractor definitions ────────────────────────────────────────────────────
+const ATTRACTORS = {
+  halvorsen: {
+    name: 'Halvorsen',
+    a: 1.4,
+    init: () => ({ x:0.1, y:0, z:0 }),
+    step(p, dt, a=1.4){
+      const dx = -a*p.x - 4*p.y - 4*p.z - p.y*p.y;
+      const dy = -a*p.y - 4*p.z - 4*p.x - p.z*p.z;
+      const dz = -a*p.z - 4*p.x - 4*p.y - p.x*p.x;
+      return { x: p.x+dx*dt, y: p.y+dy*dt, z: p.z+dz*dt, vx:dx, vy:dy, vz:dz };
+    },
+    eq: 'ẋ = −ax − 4y − 4z − y²<br>ẏ = −ay − 4z − 4x − z²<br>ż = −az − 4x − 4y − x²',
+    scale: 8,
+    hue: 260,
+  },
+  aizawa: {
+    name: 'Aizawa',
+    a:0.95, b:0.7, c:0.6, d:3.5, e:0.25, f:0.1,
+    init: () => ({ x:0.1, y:0, z:0 }),
+    step(p, dt){
+      const {a,b,c,d,e,f} = this;
+      const dx = (p.z-b)*p.x - d*p.y;
+      const dy = d*p.x + (p.z-b)*p.y;
+      const dz = c + a*p.z - (p.z*p.z*p.z)/3 - (p.x*p.x+p.y*p.y)*(1+e*p.z) + f*p.z*p.x*p.x*p.x;
+      return { x: p.x+dx*dt, y: p.y+dy*dt, z: p.z+dz*dt, vx:dx, vy:dy, vz:dz };
+    },
+    eq: 'ẋ = (z−b)x − dy<br>ẏ = dx + (z−b)y<br>ż = c + az − z³/3 − (x²+y²)(1+ez) + fzx³',
+    scale: 90,
+    hue: 180,
+  },
+  thomas: {
+    name: 'Thomas',
+    b: 0.208186,
+    init: () => ({ x:0.1, y:0, z:0 }),
+    step(p, dt){
+      const b = this.b;
+      const dx = -b*p.x + Math.sin(p.y);
+      const dy = -b*p.y + Math.sin(p.z);
+      const dz = -b*p.z + Math.sin(p.x);
+      return { x: p.x+dx*dt, y: p.y+dy*dt, z: p.z+dz*dt, vx:dx, vy:dy, vz:dz };
+    },
+    eq: 'ẋ = −bx + sin(y)<br>ẏ = −by + sin(z)<br>ż = −bz + sin(x)',
+    scale: 60,
+    hue: 30,
+  }
+};
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let currentKey = 'halvorsen';
+let rotX = 0.35, rotY = 0.0, rotZ = 0.0;
+let autoRotY = 0;
+let particles = [];
+let paused = false;
+let showAxes = true;
+let frameCount = 0, lastFPS = 0, fpsTimer = 0;
+
+// ─── Parameters ──────────────────────────────────────────────────────────────
+let params = {
+  trailLen: 800,
+  stepSize: 0.008,
+  numParticles: 6,
+  fade: 0.08,
+  zoom: 80,
+  rotSpeed: 0.12,
+  pointSize: 2,
+  hueBase: 260,
+  hueRange: 80,
+};
+
+// ─── Slider wiring ───────────────────────────────────────────────────────────
+function wire(id, key, scale, fmt, onchange){
+  const slider = document.getElementById('s-'+id);
+  const val    = document.getElementById('v-'+id);
+  function update(){
+    const raw = parseFloat(slider.value);
+    params[key] = raw * scale;
+    val.textContent = fmt ? fmt(raw, params[key]) : params[key];
+    if(onchange) onchange();
+  }
+  slider.addEventListener('input', update);
+  update();
+}
+wire('trail',  'trailLen',    1,     null, rebuildParticles);
+wire('step',   'stepSize',    0.001, (r,v)=>v.toFixed(3), rebuildParticles);
+wire('parts',  'numParticles',1,     null, rebuildParticles);
+wire('fade',   'fade',        0.01,  (r,v)=>v.toFixed(2));
+wire('zoom',   'zoom',        1,     null);
+wire('rotspd', 'rotSpeed',    0.01,  (r,v)=>v.toFixed(2));
+wire('psize',  'pointSize',   1,     null);
+wire('hue',    'hueBase',     1,     null);
+wire('hrange', 'hueRange',    1,     null);
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function rebuildParticles(){
+  const att = ATTRACTORS[currentKey];
+  // warm up the attractor to get on the manifold
+  let warmup = att.init();
+  for(let i=0;i<2000;i++) warmup = att.step(warmup, params.stepSize);
+
+  particles = [];
+  const n = Math.round(params.numParticles);
+  for(let i=0;i<n;i++){
+    // spread initial positions slightly
+    const p = { x: warmup.x + (Math.random()-0.5)*0.01,
+                y: warmup.y + (Math.random()-0.5)*0.01,
+                z: warmup.z + (Math.random()-0.5)*0.01 };
+    particles.push({ pos: p, trail: [], hueOffset: (360/n)*i });
+  }
+}
+
+// ─── 3D projection ───────────────────────────────────────────────────────────
+function rotatePoint(x, y, z, rx, ry, rz){
+  // Rx
+  let y1 = y*Math.cos(rx) - z*Math.sin(rx);
+  let z1 = y*Math.sin(rx) + z*Math.cos(rx);
+  // Ry
+  let x2 = x*Math.cos(ry) + z1*Math.sin(ry);
+  let z2 = -x*Math.sin(ry) + z1*Math.cos(ry);
+  // Rz
+  let x3 = x2*Math.cos(rz) - y1*Math.sin(rz);
+  let y3 = x2*Math.sin(rz) + y1*Math.cos(rz);
+  return [x3, y3, z2];
+}
+
+function project(x, y, z){
+  const zoom = params.zoom;
+  const att = ATTRACTORS[currentKey];
+  const sc = zoom / att.scale;
+  const [rx, ry, rz] = rotatePoint(x, y, z, rotX, autoRotY+rotY, rotZ);
+  return [cx + rx*sc, cy - ry*sc, rz*sc];
+}
+
+// ─── Mouse interaction ────────────────────────────────────────────────────────
+let dragging = false, lastMx = 0, lastMy = 0;
+canvas.addEventListener('mousedown', e=>{
+  dragging = true; lastMx = e.clientX; lastMy = e.clientY;
+});
+window.addEventListener('mouseup', ()=>{ dragging = false; });
+window.addEventListener('mousemove', e=>{
+  if(!dragging) return;
+  const dx = e.clientX - lastMx;
+  const dy = e.clientY - lastMy;
+  rotY += dx * 0.006;
+  rotX += dy * 0.006;
+  lastMx = e.clientX; lastMy = e.clientY;
+});
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const sl = document.getElementById('s-zoom');
+  sl.value = Math.max(20, Math.min(200, parseFloat(sl.value) - e.deltaY*0.1));
+  sl.dispatchEvent(new Event('input'));
+}, {passive:false});
+
+// Touch support
+let lastTouchX=0, lastTouchY=0;
+canvas.addEventListener('touchstart', e=>{ e.preventDefault();
+  const t=e.touches[0]; dragging=true; lastTouchX=t.clientX; lastTouchY=t.clientY;
+},{passive:false});
+canvas.addEventListener('touchend', ()=>dragging=false);
+canvas.addEventListener('touchmove', e=>{ e.preventDefault();
+  if(!dragging||e.touches.length!==1) return;
+  const t=e.touches[0];
+  rotY += (t.clientX-lastTouchX)*0.006;
+  rotX += (t.clientY-lastTouchY)*0.006;
+  lastTouchX=t.clientX; lastTouchY=t.clientY;
+},{passive:false});
+
+// ─── Attractor buttons ────────────────────────────────────────────────────────
+const eqEl = document.getElementById('eq-text');
+const stName = document.getElementById('st-name');
+['halvorsen','aizawa','thomas'].forEach(key=>{
+  document.getElementById('btn-'+key).addEventListener('click',()=>{
+    currentKey = key;
+    ['btn-halvorsen','btn-aizawa','btn-thomas'].forEach(id=>
+      document.getElementById(id).classList.remove('active'));
+    document.getElementById('btn-'+key).classList.add('active');
+    eqEl.innerHTML = ATTRACTORS[key].eq;
+    stName.textContent = ATTRACTORS[key].name;
+    // sync hue slider
+    document.getElementById('s-hue').value = ATTRACTORS[key].hue;
+    params.hueBase = ATTRACTORS[key].hue;
+    document.getElementById('v-hue').textContent = ATTRACTORS[key].hue;
+    rebuildParticles();
+  });
+});
+
+document.getElementById('btn-reset').addEventListener('click',()=>{
+  rotX=0.35; rotY=0; autoRotY=0;
+  rebuildParticles();
+});
+document.getElementById('btn-pause').addEventListener('click',function(){
+  paused=!paused; this.classList.toggle('active',paused);
+  this.textContent = paused ? 'Resume' : 'Pause';
+});
+document.getElementById('btn-axes').addEventListener('click',function(){
+  showAxes=!showAxes; this.classList.toggle('active',showAxes);
+});
+
+// ─── Draw axes ────────────────────────────────────────────────────────────────
+function drawAxes(){
+  const len = params.zoom / ATTRACTORS[currentKey].scale * ATTRACTORS[currentKey].scale * 0.25 + 12;
+  const axes = [[len,0,0,'#ff4444','X'],[0,len,0,'#44ff88','Y'],[0,0,len,'#4488ff','Z']];
+  const ox=cx-W*0.38, oy=cy+H*0.38;
+  for(const [ax,ay,az,col,lbl] of axes){
+    const [px, py] = rotatePoint(ax,ay,az, rotX, autoRotY+rotY, rotZ);
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ox+px*1.5, oy-py*1.5);
+    ctx.stroke();
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = col;
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText(lbl, ox+px*1.8, oy-py*1.8+4);
+    ctx.restore();
+  }
+}
+
+// ─── Velocity magnitude helper ────────────────────────────────────────────────
+function vmag(p){
+  if(p.vx===undefined) return 1;
+  return Math.sqrt(p.vx*p.vx + p.vy*p.vy + p.vz*p.vz);
+}
+
+// ─── Main render loop ─────────────────────────────────────────────────────────
+let last = 0;
+const stFPS = document.getElementById('st-fps');
+const stPts = document.getElementById('st-pts');
+const stRot = document.getElementById('st-rot');
+
+function frame(ts){
+  requestAnimationFrame(frame);
+
+  const dt = Math.min((ts-last)/1000, 0.05);
+  last = ts;
+
+  // FPS
+  fpsTimer += dt; frameCount++;
+  if(fpsTimer >= 0.5){
+    lastFPS = (frameCount/fpsTimer)|0;
+    fpsTimer=0; frameCount=0;
+    stFPS.textContent = lastFPS;
+  }
+
+  // fade
+  ctx.globalAlpha = params.fade;
+  ctx.fillStyle = '#060609';
+  ctx.fillRect(0,0,W,H);
+  ctx.globalAlpha = 1;
+
+  if(!paused){
+    // auto-rotate
+    autoRotY += params.rotSpeed * dt;
+
+    // simulate each particle
+    const att = ATTRACTORS[currentKey];
+    const STEPS_PER_FRAME = 3;
+    for(const par of particles){
+      for(let s=0;s<STEPS_PER_FRAME;s++){
+        par.pos = att.step(par.pos, params.stepSize);
+        par.trail.push({...par.pos});
+        if(par.trail.length > params.trailLen) par.trail.shift();
+      }
+    }
+  }
+
+  // draw trails
+  let totalPts = 0;
+  for(const par of particles){
+    const trail = par.trail;
+    const tLen  = trail.length;
+    if(tLen < 2) continue;
+    totalPts += tLen;
+
+    const ps = params.pointSize;
+    for(let i=1; i<tLen; i++){
+      const t   = i/tLen;
+      const pt  = trail[i];
+      const [sx, sy, sz] = project(pt.x, pt.y, pt.z);
+
+      // depth cue
+      const maxZ = params.zoom * 0.5;
+      const depthAlpha = 0.4 + 0.6*Math.min(1, (sz+maxZ)/(2*maxZ));
+
+      // velocity color
+      const speed = Math.sqrt((pt.vx||0)**2+(pt.vy||0)**2+(pt.vz||0)**2);
+      const hue = (params.hueBase + par.hueOffset + speed*params.hueRange) % 360;
+      const sat = 75 + t*20;
+      const lum = 35 + t*45;
+
+      ctx.globalAlpha = t * 0.85 * depthAlpha;
+      ctx.fillStyle = `hsl(${hue},${sat}%,${lum}%)`;
+      const r = ps * (0.4 + t*0.6) * (0.7 + depthAlpha*0.3);
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, 6.283185);
+      ctx.fill();
+    }
+
+    // bright head
+    if(tLen > 0){
+      const head = trail[tLen-1];
+      const [sx, sy] = project(head.x, head.y, head.z);
+      const hue = (params.hueBase + par.hueOffset) % 360;
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = `hsl(${hue},100%,90%)`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, ps*1.8, 0, 6.283185);
+      ctx.fill();
+      // glow
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = `hsl(${hue},100%,70%)`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, ps*4, 0, 6.283185);
+      ctx.fill();
+    }
+  }
+
+  ctx.globalAlpha = 1;
+
+  if(showAxes) drawAxes();
+
+  // stats
+  if(frameCount % 6 === 0){
+    stPts.textContent = (totalPts/1000).toFixed(1)+'k';
+    stRot.textContent = ((autoRotY+rotY)*180/Math.PI % 360|0)+'°';
+  }
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+rebuildParticles();
+// black screen
+ctx.fillStyle = '#060609';
+ctx.fillRect(0,0,W,H);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
