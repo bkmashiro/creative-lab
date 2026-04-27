@@ -59,7 +59,7 @@
 - [x] 050 Isosurface (marching cubes, 3D implicit surface, WebGL)
 - [x] 051 Cellular Noise (Worley/F1 noise, organic texture, WebGL)
 - [x] 052 Strange Attractors (Halvorsen, Aizawa, Thomas — 3D projection)
-- [ ] 053 Spirograph (hypotrochoid/epitrochoid, parametric, interactive)
+- [x] 053 Spirograph (hypotrochoid/epitrochoid, parametric, interactive)
 - [ ] 054 Turtle Graphics (recursive L-systems, dragon curve, Hilbert)
 - [ ] 055 Mandelbulb (3D fractal raymarching, WebGL)
 - [ ] 056 Voronoi 3D (Fortune's in 3D, projected, WebGL)

@@ -74,6 +74,7 @@
 | [050](demos/050-isosurface.html) | Isosurface | WebGL, marching cubes, 3D implicit surfaces, Phong shading |
 | [051](demos/051-cellular-noise.html) | Cellular Noise | WebGL, Worley/F1 noise, Voronoi, multiple distance metrics, animated feature points |
 | [052](demos/052-strange-attractors.html) | Strange Attractors | Canvas 2D, Halvorsen/Aizawa/Thomas systems, 3D projection, particle trails, depth cueing |
+| [053](demos/053-spirograph.html) | Spirograph | Canvas 2D, hypotrochoid/epitrochoid parametric curves, animated gear simulation, interactive R/r/d controls |
 
 *More coming every 2 days →*
 
