@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#054 Turtle Graphics — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#06060e;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#cdd8e8}
+canvas{display:block;width:100vw;height:100vh;position:fixed;top:0;left:0}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(6,6,18,0.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(100,220,180,0.14);border-radius:13px;padding:14px 16px;min-width:264px;font-size:0.82rem}
+h1{font-size:0.68rem;letter-spacing:0.15em;text-transform:uppercase;color:#30c490;margin-bottom:10px}
+.section{font-size:0.60rem;letter-spacing:0.11em;text-transform:uppercase;color:#1a8060;margin:10px 0 5px;border-top:1px solid rgba(50,200,140,0.08);padding-top:8px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.row label{width:82px;color:#5a9080;flex-shrink:0;font-size:0.76rem}
+.row input[type=range]{flex:1;accent-color:#30d49a;cursor:pointer}
+.val{width:40px;text-align:right;color:#30d49a;font-size:0.73rem;font-variant-numeric:tabular-nums}
+.preset-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.preset-row button{flex:1;min-width:70px;background:rgba(48,196,144,0.07);border:1px solid rgba(48,196,144,0.18);color:#30c490;border-radius:7px;padding:5px 4px;font-size:0.70rem;cursor:pointer;transition:background .15s,border-color .15s;white-space:nowrap}
+.preset-row button:hover{background:rgba(48,196,144,0.16)}
+.preset-row button.active{background:rgba(48,196,144,0.22);border-color:rgba(48,196,144,0.50);color:#60e8b8}
+.btn-row{display:flex;gap:5px;margin-top:8px}
+button.ctrl{flex:1;background:rgba(48,196,144,0.07);border:1px solid rgba(48,196,144,0.18);color:#30c490;border-radius:7px;padding:5px 4px;font-size:0.73rem;cursor:pointer;transition:background .15s}
+button.ctrl:hover{background:rgba(48,196,144,0.16)}
+button.ctrl.active{background:rgba(48,196,144,0.22);border-color:rgba(48,196,144,0.45)}
+.rule-box{margin-top:6px;font-size:0.63rem;color:#1c6048;line-height:1.8;font-family:'SF Mono',monospace;border-top:1px solid rgba(50,200,140,0.06);padding-top:8px;word-break:break-all}
+.rule-box span{color:#30c490}
+#info{position:fixed;top:16px;right:16px;z-index:10;background:rgba(6,6,18,0.88);backdrop-filter:blur(12px);border:1px solid rgba(50,200,140,0.09);border-radius:11px;padding:10px 15px;font-size:0.72rem;color:#2a6050;text-align:right;line-height:2.1}
+#info span{color:#30c490;font-variant-numeric:tabular-nums}
+#drawprog{position:fixed;bottom:52px;left:50%;transform:translateX(-50%);width:200px;height:3px;background:rgba(48,196,144,0.10);border-radius:2px;overflow:hidden}
+#drawbar{height:100%;background:linear-gradient(90deg,#30d49a,#60e8c0);border-radius:2px;transition:width 0.05s linear}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.14);font-size:0.70rem}
+footer a{color:rgba(255,255,255,0.22);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.50)}
+input[type=checkbox]{accent-color:#30d49a;cursor:pointer;width:13px;height:13px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <h1>054 · Turtle Graphics</h1>
+
+  <div class="section">Preset</div>
+  <div class="preset-row">
+    <button class="active" data-id="dragon">Dragon</button>
+    <button data-id="hilbert">Hilbert</button>
+    <button data-id="gosper">Gosper</button>
+    <button data-id="sierpinski">Sierpinski</button>
+    <button data-id="plant">Plant</button>
+    <button data-id="koch">Koch</button>
+  </div>
+
+  <div class="section">Parameters</div>
+  <div class="row">
+    <label>Iterations</label>
+    <input type="range" id="sIter" min="1" max="16" value="10" step="1">
+    <span class="val" id="vIter">10</span>
+  </div>
+  <div class="row">
+    <label>Angle °</label>
+    <input type="range" id="sAngle" min="1" max="180" value="90" step="0.5">
+    <span class="val" id="vAngle">90</span>
+  </div>
+  <div class="row">
+    <label>Line width</label>
+    <input type="range" id="sLine" min="0.2" max="4" value="0.8" step="0.1">
+    <span class="val" id="vLine">0.8</span>
+  </div>
+
+  <div class="section">Animation</div>
+  <div class="row">
+    <label>Draw speed</label>
+    <input type="range" id="sSpeed" min="1" max="200" value="40" step="1">
+    <span class="val" id="vSpeed">40</span>
+  </div>
+  <div class="row">
+    <label>Glow</label>
+    <input type="range" id="sGlow" min="0" max="20" value="6" step="1">
+    <span class="val" id="vGlow">6</span>
+  </div>
+  <div class="row">
+    <label>Color cycle</label>
+    <input type="checkbox" id="chkColor" checked>
+  </div>
+
+  <div class="btn-row">
+    <button class="ctrl" id="btnRedraw">Redraw</button>
+    <button class="ctrl" id="btnPause">Pause</button>
+    <button class="ctrl" id="btnInstant">Instant</button>
+  </div>
+
+  <div class="rule-box" id="ruleBox"></div>
+</div>
+
+<div id="info">
+  Segments: <span id="iSeg">–</span><br>
+  Depth: <span id="iDepth">–</span><br>
+  Progress: <span id="iProg">–</span>%
+</div>
+
+<div id="drawprog"><div id="drawbar" style="width:0%"></div></div>
+
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 054</footer>
+
+<script>
+// ─── L-System Presets ────────────────────────────────────────────────────────
+const PRESETS = {
+  dragon: {
+    name: 'Dragon Curve',
+    axiom: 'F',
+    rules: { F: 'F+G', G: 'F-G' },
+    angle: 90,
+    iter: 12,
+    drawChars: new Set(['F','G']),
+    initAngle: 0,
+    maxIter: 16
+  },
+  hilbert: {
+    name: 'Hilbert Curve',
+    axiom: 'X',
+    rules: { X: '-YF+XFX+FY-', Y: '+XF-YFY-FX+' },
+    angle: 90,
+    iter: 6,
+    drawChars: new Set(['F']),
+    initAngle: 0,
+    maxIter: 9
+  },
+  gosper: {
+    name: 'Gosper Curve',
+    axiom: 'A',
+    rules: {
+      A: 'A-B--B+A++AA+B-',
+      B: '+A-BB--B-A++A+B'
+    },
+    angle: 60,
+    iter: 4,
+    drawChars: new Set(['A','B']),
+    initAngle: 0,
+    maxIter: 6
+  },
+  sierpinski: {
+    name: 'Sierpiński Triangle',
+    axiom: 'F-G-G',
+    rules: { F: 'F-G+F+G-F', G: 'GG' },
+    angle: 120,
+    iter: 6,
+    drawChars: new Set(['F','G']),
+    initAngle: 0,
+    maxIter: 9
+  },
+  plant: {
+    name: 'Fractal Plant',
+    axiom: 'X',
+    rules: { X: 'F+[[X]-X]-F[-FX]+X', F: 'FF' },
+    angle: 25,
+    iter: 6,
+    drawChars: new Set(['F']),
+    initAngle: -90,
+    maxIter: 8
+  },
+  koch: {
+    name: 'Koch Snowflake',
+    axiom: 'F--F--F',
+    rules: { F: 'F+F--F+F' },
+    angle: 60,
+    iter: 5,
+    drawChars: new Set(['F']),
+    initAngle: 0,
+    maxIter: 7
+  }
+};
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+let preset = PRESETS.dragon;
+let segments = [];     // array of {x1,y1,x2,y2} – expanded turtle path
+let drawIdx = 0;       // how many segments drawn so far
+let paused = false;
+let instant = false;
+let colorCycle = true;
+let lineWidth = 0.8;
+let glowAmt = 6;
+let drawSpeed = 40;
+let currentColor = 0;
+
+// ─── DOM refs ─────────────────────────────────────────────────────────────────
+const sIter  = document.getElementById('sIter');
+const vIter  = document.getElementById('vIter');
+const sAngle = document.getElementById('sAngle');
+const vAngle = document.getElementById('vAngle');
+const sLine  = document.getElementById('sLine');
+const vLine  = document.getElementById('vLine');
+const sSpeed = document.getElementById('sSpeed');
+const vSpeed = document.getElementById('vSpeed');
+const sGlow  = document.getElementById('sGlow');
+const vGlow  = document.getElementById('vGlow');
+const chkColor = document.getElementById('chkColor');
+const ruleBox  = document.getElementById('ruleBox');
+const drawbar  = document.getElementById('drawbar');
+const iSeg  = document.getElementById('iSeg');
+const iDepth= document.getElementById('iDepth');
+const iProg = document.getElementById('iProg');
+
+// ─── L-System Expansion ───────────────────────────────────────────────────────
+function expand(axiom, rules, iterations) {
+  let s = axiom;
+  for (let i = 0; i < iterations; i++) {
+    let next = '';
+    for (const ch of s) next += (rules[ch] ?? ch);
+    s = next;
+    // safety: bail if enormous
+    if (s.length > 8_000_000) break;
+  }
+  return s;
+}
+
+// ─── Turtle Walk ──────────────────────────────────────────────────────────────
+function turtleToSegments(str, stepLen, angleDeg, initAngleDeg, drawChars) {
+  const DA = angleDeg * Math.PI / 180;
+  let x = 0, y = 0, a = initAngleDeg * Math.PI / 180;
+  const stack = [];
+  const segs = [];
+  for (const ch of str) {
+    if (drawChars.has(ch)) {
+      const nx = x + Math.cos(a) * stepLen;
+      const ny = y + Math.sin(a) * stepLen;
+      segs.push({x1:x, y1:y, x2:nx, y2:ny});
+      x = nx; y = ny;
+    } else {
+      switch(ch) {
+        case 'f': x += Math.cos(a)*stepLen; y += Math.sin(a)*stepLen; break;
+        case '+': a += DA; break;
+        case '-': a -= DA; break;
+        case '[': stack.push({x,y,a}); break;
+        case ']': {const s=stack.pop(); x=s.x; y=s.y; a=s.a; break;}
+      }
+    }
+  }
+  return segs;
+}
+
+// Fit segments to canvas with padding
+function fitSegments(segs, W, H, pad=60) {
+  if (!segs.length) return segs;
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for (const s of segs) {
+    minX=Math.min(minX,s.x1,s.x2); maxX=Math.max(maxX,s.x1,s.x2);
+    minY=Math.min(minY,s.y1,s.y2); maxY=Math.max(maxY,s.y1,s.y2);
+  }
+  const bw = maxX-minX||1, bh = maxY-minY||1;
+  const scale = Math.min((W-pad*2)/bw, (H-pad*2)/bh);
+  const cx = (minX+maxX)/2, cy = (minY+maxY)/2;
+  return segs.map(s=>({
+    x1: (s.x1-cx)*scale + W/2,
+    y1: (s.y1-cy)*scale + H/2,
+    x2: (s.x2-cx)*scale + W/2,
+    y2: (s.y2-cy)*scale + H/2
+  }));
+}
+
+// ─── Build & Start ────────────────────────────────────────────────────────────
+function buildCurve() {
+  ctx.clearRect(0,0,W,H);
+  drawIdx = 0;
+  const iter = +sIter.value;
+  const angleDeg = +sAngle.value;
+  const lstr = expand(preset.axiom, preset.rules, iter);
+  const raw = turtleToSegments(lstr, 10, angleDeg, preset.initAngle, preset.drawChars);
+  segments = fitSegments(raw, W, H);
+  iSeg.textContent = segments.length.toLocaleString();
+  iDepth.textContent = iter;
+  updateRuleBox();
+}
+
+function updateRuleBox() {
+  const p = preset;
+  let html = `<span style="color:#1c7050">Axiom:</span> <span>${p.axiom}</span><br>`;
+  for (const [k,v] of Object.entries(p.rules)) {
+    // truncate long rules
+    const disp = v.length > 40 ? v.slice(0,40)+'…' : v;
+    html += `<span style="color:#1c7050">${k} →</span> <span>${disp}</span><br>`;
+  }
+  ruleBox.innerHTML = html;
+}
+
+// ─── Render loop ──────────────────────────────────────────────────────────────
+let lastTime = 0;
+function frame(ts) {
+  requestAnimationFrame(frame);
+  if (paused || drawIdx >= segments.length) return;
+
+  const dt = Math.min(ts - lastTime, 50);
+  lastTime = ts;
+
+  const toAdd = instant ? segments.length : Math.ceil(drawSpeed * dt / 16);
+  const end = Math.min(drawIdx + toAdd, segments.length);
+
+  ctx.save();
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+
+  if (glowAmt > 0) {
+    ctx.shadowBlur = glowAmt * 2;
+    ctx.shadowColor = colorCycle ? hsl(currentColor, 0.9, 0.6) : '#30d49a';
+  }
+
+  ctx.beginPath();
+  let lastX = segments[drawIdx]?.x1, lastY = segments[drawIdx]?.y1;
+  let pathStart = true;
+
+  for (let i = drawIdx; i < end; i++) {
+    const s = segments[i];
+    if (colorCycle) {
+      const t = i / segments.length;
+      const h = (t * 320 + currentColor) % 360;
+      if (!pathStart) { ctx.stroke(); ctx.beginPath(); }
+      ctx.strokeStyle = hsl(h, 0.85, 0.60);
+      ctx.moveTo(s.x1, s.y1);
+      ctx.lineTo(s.x2, s.y2);
+      ctx.stroke();
+      ctx.beginPath();
+      pathStart = true;
+    } else {
+      if (pathStart || Math.hypot(s.x1-lastX, s.y1-lastY) > 2) {
+        ctx.moveTo(s.x1, s.y1);
+      }
+      ctx.lineTo(s.x2, s.y2);
+      pathStart = false;
+    }
+    lastX = s.x2; lastY = s.y2;
+  }
+  if (!colorCycle) {
+    ctx.strokeStyle = '#30d49a';
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  drawIdx = end;
+  currentColor = (currentColor + 0.3) % 360;
+
+  const pct = segments.length ? Math.round(drawIdx / segments.length * 100) : 0;
+  drawbar.style.width = pct + '%';
+  iProg.textContent = pct;
+
+  if (instant) { instant = false; }
+}
+
+function hsl(h, s, l) {
+  return `hsl(${h.toFixed(1)},${(s*100).toFixed(0)}%,${(l*100).toFixed(0)}%)`;
+}
+
+// ─── Resize ───────────────────────────────────────────────────────────────────
+function resize() {
+  W = canvas.width  = window.innerWidth  * devicePixelRatio;
+  H = canvas.height = window.innerHeight * devicePixelRatio;
+  canvas.style.width  = window.innerWidth  + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  // Redo with physical pixels but render at logical
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  buildCurve();
+}
+window.addEventListener('resize', resize);
+
+// ─── Control events ───────────────────────────────────────────────────────────
+function sliderRow(slider, valEl, callback) {
+  slider.addEventListener('input', () => {
+    valEl.textContent = slider.value;
+    callback(+slider.value);
+  });
+}
+
+sliderRow(sIter,  vIter,  v => { buildCurve(); });
+sliderRow(sAngle, vAngle, v => { buildCurve(); });
+sliderRow(sLine,  vLine,  v => { lineWidth = v; });
+sliderRow(sSpeed, vSpeed, v => { drawSpeed = v; });
+sliderRow(sGlow,  vGlow,  v => { glowAmt = v; });
+
+chkColor.addEventListener('change', () => { colorCycle = chkColor.checked; });
+
+document.getElementById('btnRedraw').addEventListener('click', () => {
+  ctx.clearRect(0,0,W,H);
+  buildCurve();
+  paused = false;
+});
+
+document.getElementById('btnPause').addEventListener('click', function() {
+  paused = !paused;
+  this.textContent = paused ? 'Resume' : 'Pause';
+  this.classList.toggle('active', paused);
+});
+
+document.getElementById('btnInstant').addEventListener('click', () => {
+  // Draw remaining instantly
+  const remaining = segments.slice(drawIdx);
+  ctx.save();
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  if (glowAmt > 0) {
+    ctx.shadowBlur = glowAmt * 2;
+    ctx.shadowColor = '#30d49a';
+  }
+  for (let i = 0; i < remaining.length; i++) {
+    const s = remaining[i];
+    if (colorCycle) {
+      const t = (drawIdx + i) / segments.length;
+      ctx.strokeStyle = hsl((t * 320 + currentColor) % 360, 0.85, 0.60);
+    } else {
+      ctx.strokeStyle = '#30d49a';
+    }
+    ctx.beginPath();
+    ctx.moveTo(s.x1, s.y1);
+    ctx.lineTo(s.x2, s.y2);
+    ctx.stroke();
+  }
+  ctx.restore();
+  drawIdx = segments.length;
+  drawbar.style.width = '100%';
+  iProg.textContent = 100;
+});
+
+// Preset buttons
+document.querySelectorAll('.preset-row button').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.preset-row button').forEach(b=>b.classList.remove('active'));
+    this.classList.add('active');
+    const id = this.dataset.id;
+    preset = PRESETS[id];
+    // Update angle + iter sliders
+    sAngle.max = 180;
+    sIter.max = preset.maxIter;
+    sAngle.value = preset.angle;
+    vAngle.textContent = preset.angle;
+    sIter.value = preset.iter;
+    vIter.textContent = preset.iter;
+    ctx.clearRect(0,0,W,H);
+    buildCurve();
+    paused = false;
+    document.getElementById('btnPause').textContent = 'Pause';
+    document.getElementById('btnPause').classList.remove('active');
+  });
+});
+
+// ─── Keyboard shortcuts ───────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === ' ') {
+    paused = !paused;
+    const btn = document.getElementById('btnPause');
+    btn.textContent = paused ? 'Resume' : 'Pause';
+    btn.classList.toggle('active', paused);
+  }
+  if (e.key === 'r' || e.key === 'R') {
+    ctx.clearRect(0,0,W,H);
+    buildCurve();
+    paused = false;
+  }
+});
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+W = window.innerWidth;
+H = window.innerHeight;
+canvas.width  = W * devicePixelRatio;
+canvas.height = H * devicePixelRatio;
+ctx.scale(devicePixelRatio, devicePixelRatio);
+buildCurve();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

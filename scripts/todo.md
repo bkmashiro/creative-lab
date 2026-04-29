@@ -60,7 +60,7 @@
 - [x] 051 Cellular Noise (Worley/F1 noise, organic texture, WebGL)
 - [x] 052 Strange Attractors (Halvorsen, Aizawa, Thomas — 3D projection)
 - [x] 053 Spirograph (hypotrochoid/epitrochoid, parametric, interactive)
-- [ ] 054 Turtle Graphics (recursive L-systems, dragon curve, Hilbert)
+- [x] 054 Turtle Graphics (recursive L-systems, dragon curve, Hilbert)
 - [ ] 055 Mandelbulb (3D fractal raymarching, WebGL)
 - [ ] 056 Voronoi 3D (Fortune's in 3D, projected, WebGL)
 - [ ] 057 Wave Function Collapse (procedural tile generation, canvas)
