@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#056 Voronoi 3D — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#050408;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#dde6f0}
+canvas{display:block;width:100vw;height:100vh;position:fixed;top:0;left:0}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(5,4,8,0.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(160,120,255,0.15);border-radius:12px;padding:14px 16px;min-width:240px;font-size:0.82rem}
+h1{font-size:0.7rem;letter-spacing:0.13em;text-transform:uppercase;color:#7040b0;margin-bottom:11px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.row label{width:110px;color:#a080c8;flex-shrink:0;font-size:0.78rem}
+.row input[type=range]{flex:1;accent-color:#a060ff;cursor:pointer}
+.val{width:44px;text-align:right;color:#a060ff;font-size:0.74rem;font-variant-numeric:tabular-nums}
+.section{font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;color:#5030a0;margin:9px 0 4px;border-top:1px solid rgba(160,120,255,0.08);padding-top:7px}
+select{background:rgba(5,4,8,0.9);border:1px solid rgba(160,120,255,0.2);color:#a060ff;border-radius:6px;padding:3px 6px;font-size:0.76rem;cursor:pointer;width:100%}
+.check-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer}
+.check-row label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.check-row input{accent-color:#a060ff;cursor:pointer;width:13px;height:13px}
+.check-row span{color:#a080c8;font-size:0.78rem}
+.btn-row{display:flex;gap:5px;margin-top:9px}
+button{flex:1;background:rgba(160,96,255,0.07);border:1px solid rgba(160,96,255,0.18);color:#a060ff;border-radius:6px;padding:5px 4px;font-size:0.74rem;cursor:pointer;transition:background .15s}
+button:hover{background:rgba(160,96,255,0.18)}
+#stats{position:fixed;top:16px;right:16px;z-index:10;background:rgba(5,4,8,0.78);backdrop-filter:blur(10px);border:1px solid rgba(160,120,255,0.09);border-radius:10px;padding:10px 14px;font-size:0.74rem;color:#6050a0;text-align:right;line-height:1.8}
+#stats span{color:#9070c8;font-variant-numeric:tabular-nums}
+#hint{position:fixed;bottom:36px;left:50%;transform:translateX(-50%);color:rgba(160,120,255,0.22);font-size:0.7rem;pointer-events:none;white-space:nowrap}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.18);font-size:0.7rem}
+footer a{color:rgba(255,255,255,0.26);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.52)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <h1>056 · Voronoi 3D</h1>
+
+  <div class="section">Structure</div>
+  <div class="row"><label>Seed Count</label><input type="range" id="s-seeds" min="4" max="32" step="1" value="16"><span class="val" id="v-seeds">16</span></div>
+  <div class="row"><label>Edge Width</label><input type="range" id="s-edge" min="1" max="100" step="1" value="40"><span class="val" id="v-edge">0.40</span></div>
+  <div class="row"><label>Cell Opacity</label><input type="range" id="s-fill" min="0" max="100" step="1" value="60"><span class="val" id="v-fill">0.60</span></div>
+
+  <div class="section">Appearance</div>
+  <div class="row"><label>Palette</label>
+    <select id="sel-pal">
+      <option value="0">Cosmic</option>
+      <option value="1">Neon</option>
+      <option value="2">Ember</option>
+      <option value="3">Arctic</option>
+      <option value="4">Gold</option>
+    </select>
+  </div>
+  <div class="row"><label>Glow</label><input type="range" id="s-glow" min="0" max="100" step="1" value="55"><span class="val" id="v-glow">0.55</span></div>
+  <div class="row"><label>Depth Fade</label><input type="range" id="s-fog" min="0" max="100" step="1" value="50"><span class="val" id="v-fog">0.50</span></div>
+
+  <div class="section">Animation</div>
+  <div class="row"><label>Rotate Speed</label><input type="range" id="s-rot" min="0" max="100" step="1" value="20"><span class="val" id="v-rot">0.20</span></div>
+  <div class="row"><label>Drift Speed</label><input type="range" id="s-drift" min="0" max="100" step="1" value="15"><span class="val" id="v-drift">0.15</span></div>
+
+  <div class="check-row"><label><input type="checkbox" id="cb-edges" checked> <span>Show edges</span></label></div>
+  <div class="check-row"><label><input type="checkbox" id="cb-seeds"> <span>Show seed points</span></label></div>
+  <div class="check-row"><label><input type="checkbox" id="cb-slice"> <span>Slice mode</span></label></div>
+
+  <div class="btn-row">
+    <button id="btn-pause">Pause</button>
+    <button id="btn-scatter">Scatter</button>
+    <button id="btn-reset">Reset</button>
+  </div>
+</div>
+
+<div id="stats">
+  FPS <span id="st-fps">-</span><br>
+  Seeds <span id="st-seeds">-</span><br>
+  Mode <span id="st-mode">3D</span>
+</div>
+
+<div id="hint">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
+
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 056</footer>
+
+<script>
+// ── WebGL setup ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+if (!gl) { document.body.innerHTML = '<p style="color:#f00;padding:2em">WebGL not supported</p>'; throw 0; }
+
+const isWebGL2 = !!canvas.getContext('webgl2');
+
+// ── Shader sources ───────────────────────────────────────────────────────────
+const VS = `
+attribute vec2 a_pos;
+varying vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+
+const FS = `
+precision highp float;
+varying vec2 v_uv;
+
+uniform vec2  u_res;
+uniform float u_time;
+uniform float u_fov;
+uniform vec3  u_cam_pos;
+uniform mat3  u_cam_rot;
+
+// controls
+uniform int   u_num_seeds;
+uniform float u_edge_width;
+uniform float u_fill_opacity;
+uniform float u_glow;
+uniform float u_fog;
+uniform int   u_palette;
+uniform bool  u_show_edges;
+uniform bool  u_show_seeds;
+uniform bool  u_slice_mode;
+
+// seed positions (max 32)
+uniform vec3  u_seeds[32];
+
+// ── Palette ──────────────────────────────────────────────────────────────────
+vec3 palette(float t, int pal) {
+  t = fract(t);
+  if (pal == 0) { // Cosmic
+    vec3 a = vec3(0.5,0.5,0.5), b=vec3(0.5,0.5,0.5);
+    vec3 c = vec3(1.0,1.0,1.0), d=vec3(0.0,0.33,0.67);
+    return a + b*cos(6.2832*(c*t+d));
+  }
+  if (pal == 1) { // Neon
+    vec3 a=vec3(0.5,0.5,0.5),b=vec3(0.5,0.5,0.5);
+    vec3 c=vec3(2.0,1.0,1.0),d=vec3(0.5,0.2,0.25);
+    return a+b*cos(6.2832*(c*t+d));
+  }
+  if (pal == 2) { // Ember
+    vec3 a=vec3(0.5,0.3,0.1),b=vec3(0.5,0.4,0.3);
+    vec3 c=vec3(1.0,0.7,0.4),d=vec3(0.0,0.15,0.2);
+    return a+b*cos(6.2832*(c*t+d));
+  }
+  if (pal == 3) { // Arctic
+    vec3 a=vec3(0.4,0.5,0.6),b=vec3(0.4,0.4,0.4);
+    vec3 c=vec3(1.0,1.0,1.0),d=vec3(0.0,0.1,0.2);
+    return a+b*cos(6.2832*(c*t+d));
+  }
+  // Gold
+  vec3 a=vec3(0.6,0.5,0.1),b=vec3(0.4,0.4,0.2);
+  vec3 c=vec3(1.0,0.8,0.5),d=vec3(0.0,0.1,0.3);
+  return a+b*cos(6.2832*(c*t+d));
+}
+
+// ── Voronoi distance (returns nearest and 2nd nearest distances + cell id) ──
+struct VorCell {
+  float d1;    // nearest dist
+  float d2;    // 2nd nearest dist
+  int   id;    // nearest seed index
+  vec3  seed;  // nearest seed pos
+};
+
+VorCell voronoi3D(vec3 p) {
+  float d1 = 1e9, d2 = 1e9;
+  int best = 0;
+  vec3 bestSeed = vec3(0.0);
+  for (int i = 0; i < 32; i++) {
+    if (i >= u_num_seeds) break;
+    float d = distance(p, u_seeds[i]);
+    if (d < d1) {
+      d2 = d1; d1 = d; best = i; bestSeed = u_seeds[i];
+    } else if (d < d2) {
+      d2 = d;
+    }
+  }
+  VorCell v;
+  v.d1 = d1; v.d2 = d2; v.id = best; v.seed = bestSeed;
+  return v;
+}
+
+// Smooth min for blending edges
+float smin(float a, float b, float k){
+  float h = max(k - abs(a-b), 0.0);
+  return min(a,b) - h*h/(4.0*k);
+}
+
+// Sphere SDF for seed points
+float seedSpheres(vec3 p) {
+  float d = 1e9;
+  for (int i = 0; i < 32; i++) {
+    if (i >= u_num_seeds) break;
+    d = min(d, length(p - u_seeds[i]) - 0.018);
+  }
+  return d;
+}
+
+// ── Raymarching scene ────────────────────────────────────────────────────────
+// We raymarch a translucent volume bounded by a sphere of radius 1.2.
+// Inside, we measure the Voronoi edge proximity and accumulate color.
+
+float boundSphere(vec3 ro, vec3 rd, out float tNear, out float tFar) {
+  float R = 1.3;
+  float b = dot(ro, rd);
+  float c = dot(ro, ro) - R*R;
+  float disc = b*b - c;
+  if (disc < 0.0) return -1.0;
+  float sq = sqrt(disc);
+  tNear = -b - sq;
+  tFar  = -b + sq;
+  return 1.0;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - u_res*0.5) / u_res.y;
+
+  // Ray direction
+  vec3 rd = normalize(u_cam_rot * vec3(uv, u_fov));
+  vec3 ro = u_cam_pos;
+
+  // Background gradient
+  float bgT = 0.5 + 0.5 * rd.y;
+  vec3 bg = mix(vec3(0.02, 0.01, 0.04), vec3(0.05, 0.03, 0.09), bgT);
+  bg += 0.015 * palette(bgT * 0.3 + float(u_palette)*0.2, u_palette);
+
+  float tNear, tFar;
+  if (boundSphere(ro, rd, tNear, tFar) < 0.0 || tFar < 0.0) {
+    gl_FragColor = vec4(bg, 1.0); return;
+  }
+  tNear = max(tNear, 0.0);
+
+  // Volume ray march
+  const int STEPS = 80;
+  float stepSize = (tFar - tNear) / float(STEPS);
+
+  vec4 accum = vec4(0.0);  // accumulated RGBA
+  float t = tNear + stepSize * 0.5;
+
+  for (int i = 0; i < STEPS; i++) {
+    if (accum.a > 0.97) break;
+    vec3 p = ro + rd * t;
+
+    VorCell vc = voronoi3D(p);
+    float edgeDist = (vc.d2 - vc.d1); // 0 at Voronoi boundary
+
+    // Cell color from palette
+    vec3 cellCol = palette(float(vc.id) / 32.0 + float(u_palette)*0.17, u_palette);
+
+    float alpha = 0.0;
+    vec3 col = cellCol;
+
+    if (u_slice_mode) {
+      // Slice: only render a thin shell at certain depths
+      float sliceY = sin(u_time * 0.3) * 0.8;
+      float sliceW = 0.06;
+      float sliceFac = max(0.0, 1.0 - abs(p.y - sliceY) / sliceW);
+      if (sliceFac > 0.0) {
+        // Edge on slice
+        float edgeFac = 1.0 - smoothstep(0.0, u_edge_width * 0.15, edgeDist);
+        if (u_show_edges) {
+          alpha = sliceFac * (edgeFac * 0.85 + u_fill_opacity * 0.4);
+          col = mix(cellCol, vec3(1.0), edgeFac * 0.6);
+          col += u_glow * edgeFac * 0.5 * vec3(1.0,0.9,1.0);
+        } else {
+          alpha = sliceFac * u_fill_opacity * 0.5;
+        }
+      }
+    } else {
+      // 3D volume rendering
+      float edgeThresh = u_edge_width * 0.15;
+      float edgeFac = u_show_edges ? (1.0 - smoothstep(0.0, edgeThresh, edgeDist)) : 0.0;
+
+      // Cell fill — sparse/translucent
+      float fillAlpha = u_fill_opacity * 0.012;
+
+      // Edge contribution
+      float edgeAlpha = edgeFac * 0.45;
+
+      // Glow halo around edges
+      float haloFac = u_show_edges ? (1.0 - smoothstep(0.0, edgeThresh * 3.0, edgeDist)) : 0.0;
+      edgeAlpha += haloFac * u_glow * 0.08;
+
+      alpha = fillAlpha + edgeAlpha;
+      alpha *= stepSize * 8.0; // density scale
+
+      // Edge brightening
+      col = mix(cellCol * 0.7, vec3(1.0), edgeFac * 0.55);
+      col += u_glow * haloFac * 0.3 * vec3(1.1, 0.9, 1.3);
+    }
+
+    // Seed point spheres
+    if (u_show_seeds) {
+      float sd = seedSpheres(p);
+      if (sd < 0.0) {
+        float seedFac = clamp(-sd / 0.018, 0.0, 1.0);
+        col = mix(col, vec3(1.0, 1.0, 0.6), seedFac * 0.9);
+        alpha = max(alpha, seedFac * 0.6 * stepSize * 6.0);
+      }
+    }
+
+    // Depth fog
+    float fog = 1.0 - u_fog * (t - tNear) / (tFar - tNear) * 0.7;
+    alpha *= fog;
+
+    // Front-to-back alpha compositing
+    float wa = alpha * (1.0 - accum.a);
+    accum.rgb += col * wa;
+    accum.a   += wa;
+
+    t += stepSize;
+  }
+
+  // Sphere shell outline
+  {
+    float R = 1.3;
+    vec3 p0 = ro + rd * tNear;
+    float rim = abs(length(p0) - R);
+    float rimFac = exp(-rim * 60.0) * 0.15;
+    vec3 rimCol = palette(0.5 + float(u_palette)*0.1, u_palette);
+    accum.rgb = mix(accum.rgb, accum.rgb + rimCol * rimFac, 0.3);
+  }
+
+  // Compose over background
+  vec3 finalCol = accum.rgb + bg * (1.0 - accum.a);
+
+  // Vignette
+  float vig = 1.0 - 0.5 * dot(uv*1.3, uv*1.3);
+  finalCol *= vig;
+
+  // Tone map
+  finalCol = finalCol / (finalCol + 0.7);
+  finalCol = pow(max(finalCol, 0.0), vec3(0.45));
+
+  gl_FragColor = vec4(finalCol, 1.0);
+}`;
+
+// ── Compile shader ────────────────────────────────────────────────────────────
+function compileShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+    throw new Error('Shader compile error');
+  }
+  return s;
+}
+
+function createProgram(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compileShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compileShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+const prog = createProgram(VS, FS);
+gl.useProgram(prog);
+
+// Full-screen quad
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, 'a_pos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+// Uniform locations
+const U = {};
+['u_res','u_time','u_fov','u_cam_pos','u_cam_rot',
+ 'u_num_seeds','u_edge_width','u_fill_opacity','u_glow','u_fog',
+ 'u_palette','u_show_edges','u_show_seeds','u_slice_mode',
+ ...Array.from({length:32}, (_,i)=>`u_seeds[${i}]`)
+].forEach(n => U[n] = gl.getUniformLocation(prog, n));
+
+// ── State ────────────────────────────────────────────────────────────────────
+let paused = false;
+let t0 = performance.now(), lastT = 0, frameCount = 0, fpsT = 0;
+let numSeeds = 16;
+let seeds = [];   // vec3[]
+
+function genSeeds(n) {
+  seeds = [];
+  for (let i = 0; i < n; i++) {
+    // Fibonacci sphere + slight jitter
+    const phi = Math.acos(1 - 2*(i+0.5)/n);
+    const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+    const r = 0.55 + 0.35 * Math.random();
+    seeds.push([
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.cos(phi),
+      r * Math.sin(phi) * Math.sin(theta)
+    ]);
+  }
+}
+genSeeds(numSeeds);
+
+// Camera orbit state
+let orbitTheta = 0.4, orbitPhi = 0.5, orbitDist = 3.2;
+let panX = 0, panY = 0;
+let seedOffsets = [];  // per-seed drift velocities
+function initDrift() {
+  seedOffsets = seeds.map(() => ({
+    ax: (Math.random()-0.5)*0.3, ay: (Math.random()-0.5)*0.3, az: (Math.random()-0.5)*0.3,
+    fx: Math.random()*0.4+0.1, fy: Math.random()*0.4+0.1, fz: Math.random()*0.4+0.1,
+    px: Math.random()*Math.PI*2, py: Math.random()*Math.PI*2, pz: Math.random()*Math.PI*2
+  }));
+}
+initDrift();
+
+// Rotation matrix from euler angles
+function rotMat(yaw, pitch) {
+  const cy=Math.cos(yaw), sy=Math.sin(yaw);
+  const cp=Math.cos(pitch), sp=Math.sin(pitch);
+  return [
+    cy, 0, -sy,
+    sy*sp, cp, cy*sp,
+    sy*cp, -sp, cy*cp
+  ];
+}
+
+// ── Controls UI ──────────────────────────────────────────────────────────────
+function bind(id, cb) {
+  const el = document.getElementById(id);
+  el.addEventListener('input', cb);
+  return el;
+}
+function bindSlider(sid, vid, scale, dec) {
+  const el = bind(sid, () => {
+    document.getElementById(vid).textContent = (el.value * scale).toFixed(dec);
+  });
+}
+bindSlider('s-edge','v-edge', 0.01, 2);
+bindSlider('s-fill','v-fill', 0.01, 2);
+bindSlider('s-glow','v-glow', 0.01, 2);
+bindSlider('s-fog', 'v-fog',  0.01, 2);
+bindSlider('s-rot', 'v-rot',  0.01, 2);
+bindSlider('s-drift','v-drift',0.01,2);
+
+const sSeeds = document.getElementById('s-seeds');
+sSeeds.addEventListener('input', () => {
+  numSeeds = parseInt(sSeeds.value);
+  document.getElementById('v-seeds').textContent = numSeeds;
+  genSeeds(numSeeds);
+  initDrift();
+});
+
+document.getElementById('btn-pause').addEventListener('click', function() {
+  paused = !paused;
+  this.textContent = paused ? 'Resume' : 'Pause';
+  if (!paused) { t0 = performance.now() - lastT * 1000; }
+});
+document.getElementById('btn-scatter').addEventListener('click', () => {
+  genSeeds(numSeeds);
+  initDrift();
+});
+document.getElementById('btn-reset').addEventListener('click', () => {
+  orbitTheta = 0.4; orbitPhi = 0.5; orbitDist = 3.2; panX = 0; panY = 0;
+});
+
+// Mouse orbit
+let mouse = { down: false, right: false, lx: 0, ly: 0 };
+canvas.addEventListener('mousedown', e => {
+  mouse.down = true; mouse.right = e.button === 2;
+  mouse.lx = e.clientX; mouse.ly = e.clientY;
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('mouseup', () => { mouse.down = false; });
+window.addEventListener('mousemove', e => {
+  if (!mouse.down) return;
+  const dx = e.clientX - mouse.lx, dy = e.clientY - mouse.ly;
+  mouse.lx = e.clientX; mouse.ly = e.clientY;
+  if (mouse.right) { panX += dx * 0.003; panY -= dy * 0.003; }
+  else { orbitTheta -= dx * 0.006; orbitPhi = Math.max(-1.4, Math.min(1.4, orbitPhi + dy * 0.006)); }
+});
+canvas.addEventListener('wheel', e => {
+  orbitDist = Math.max(1.5, Math.min(8.0, orbitDist + e.deltaY * 0.003));
+  e.preventDefault();
+}, {passive:false});
+
+// Touch
+let touches = {};
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  for (const t of e.touches) touches[t.identifier] = {x: t.clientX, y: t.clientY};
+}, {passive:false});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    const prev = touches[t.identifier];
+    if (prev) {
+      orbitTheta -= (t.clientX - prev.x) * 0.006;
+      orbitPhi = Math.max(-1.4, Math.min(1.4, orbitPhi + (t.clientY - prev.y) * 0.006));
+    }
+    touches[t.identifier] = {x: t.clientX, y: t.clientY};
+  } else if (e.touches.length === 2) {
+    const [a, b] = e.touches;
+    const pa = touches[a.identifier], pb = touches[b.identifier];
+    if (pa && pb) {
+      const d0 = Math.hypot(pa.x-pb.x, pa.y-pb.y);
+      const d1 = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+      orbitDist = Math.max(1.5, Math.min(8.0, orbitDist * d0/d1));
+    }
+    touches[a.identifier] = {x: a.clientX, y: a.clientY};
+    touches[b.identifier] = {x: b.clientX, y: b.clientY};
+  }
+}, {passive:false});
+canvas.addEventListener('touchend', e => {
+  for (const t of e.changedTouches) delete touches[t.identifier];
+}, {passive:false});
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+function resize() {
+  canvas.width  = Math.floor(window.innerWidth  * devicePixelRatio);
+  canvas.height = Math.floor(window.innerHeight * devicePixelRatio);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+function render(ts) {
+  requestAnimationFrame(render);
+  if (!paused) lastT = (ts - t0) / 1000;
+  const time = lastT;
+
+  // FPS
+  frameCount++;
+  if (ts - fpsT > 800) {
+    document.getElementById('st-fps').textContent = Math.round(frameCount * 1000 / (ts - fpsT));
+    document.getElementById('st-seeds').textContent = numSeeds;
+    document.getElementById('st-mode').textContent = document.getElementById('cb-slice').checked ? 'Slice' : '3D Vol';
+    frameCount = 0; fpsT = ts;
+  }
+
+  // Read sliders
+  const rotSpeed   = parseFloat(document.getElementById('s-rot').value) * 0.01;
+  const driftSpeed = parseFloat(document.getElementById('s-drift').value) * 0.01;
+  const edgeW      = parseFloat(document.getElementById('s-edge').value) * 0.01;
+  const fillOp     = parseFloat(document.getElementById('s-fill').value) * 0.01;
+  const glow       = parseFloat(document.getElementById('s-glow').value) * 0.01;
+  const fog        = parseFloat(document.getElementById('s-fog').value)  * 0.01;
+  const palette    = parseInt(document.getElementById('sel-pal').value);
+  const showEdges  = document.getElementById('cb-edges').checked;
+  const showSeeds  = document.getElementById('cb-seeds').checked;
+  const sliceMode  = document.getElementById('cb-slice').checked;
+
+  // Auto-rotate
+  if (!mouse.down) orbitTheta += rotSpeed * 0.01;
+
+  // Compute animated seed positions
+  const animSeeds = seeds.map((s, i) => {
+    const d = seedOffsets[i];
+    return [
+      s[0] + d.ax * driftSpeed * Math.sin(time * d.fx + d.px),
+      s[1] + d.ay * driftSpeed * Math.sin(time * d.fy + d.py),
+      s[2] + d.az * driftSpeed * Math.sin(time * d.fz + d.pz)
+    ];
+  });
+
+  // Camera
+  const cy = Math.cos(orbitTheta), sy = Math.sin(orbitTheta);
+  const cp = Math.cos(orbitPhi),   sp = Math.sin(orbitPhi);
+  const camPos = [
+    orbitDist * cy * cp + panX,
+    orbitDist * sp     + panY,
+    orbitDist * sy * cp
+  ];
+  const mat = rotMat(orbitTheta + Math.PI, -orbitPhi);
+
+  // Upload uniforms
+  gl.uniform2f(U['u_res'], canvas.width, canvas.height);
+  gl.uniform1f(U['u_time'], time);
+  gl.uniform1f(U['u_fov'], 1.2);
+  gl.uniform3fv(U['u_cam_pos'], camPos);
+  gl.uniformMatrix3fv(U['u_cam_rot'], false, mat);
+
+  gl.uniform1i(U['u_num_seeds'], numSeeds);
+  gl.uniform1f(U['u_edge_width'], edgeW);
+  gl.uniform1f(U['u_fill_opacity'], fillOp);
+  gl.uniform1f(U['u_glow'], glow);
+  gl.uniform1f(U['u_fog'], fog);
+  gl.uniform1i(U['u_palette'], palette);
+  gl.uniform1i(U['u_show_edges'], showEdges ? 1 : 0);
+  gl.uniform1i(U['u_show_seeds'], showSeeds ? 1 : 0);
+  gl.uniform1i(U['u_slice_mode'], sliceMode ? 1 : 0);
+
+  for (let i = 0; i < 32; i++) {
+    const s = animSeeds[i] || [0,0,0];
+    gl.uniform3fv(U[`u_seeds[${i}]`], s);
+  }
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
