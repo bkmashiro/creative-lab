@@ -78,6 +78,7 @@
 | [054](demos/054-turtle-graphics.html) | Turtle Graphics | Canvas 2D, recursive L-system expansion (Dragon Curve, Hilbert, Gosper, Sierpiński, Koch, Fractal Plant), animated drawing with color cycling |
 | [055](demos/055-mandelbulb.html) | Mandelbulb | WebGL raymarching with sphere tracing, Mandelbulb distance estimator, orbit-trap coloring, soft shadows & AO |
 | [056](demos/056-voronoi-3d.html) | Voronoi 3D | WebGL volume raymarching, 3D Voronoi cells, edge proximity glow, animated seed drift, orbit camera |
+| [057](demos/057-wave-function-collapse.html) | Wave Function Collapse | Canvas 2D, constraint propagation, entropy-guided tile collapse, circuit board tileset |
 
 *More coming every 2 days →*
 

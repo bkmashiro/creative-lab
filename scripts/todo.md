@@ -63,7 +63,7 @@
 - [x] 054 Turtle Graphics (recursive L-systems, dragon curve, Hilbert)
 - [x] 055 Mandelbulb (3D fractal raymarching, WebGL)
 - [x] 056 Voronoi 3D (Fortune's in 3D, projected, WebGL)
-- [ ] 057 Wave Function Collapse (procedural tile generation, canvas)
+- [x] 057 Wave Function Collapse (procedural tile generation, canvas)
 - [ ] 058 Space Filling Curves (Hilbert, Peano — animated unfolding)
 
 ### Life & Emergence

@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#057 Wave Function Collapse — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#06090f;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#bcd4e8}
+canvas{display:block;width:100vw;height:100vh;position:fixed;top:0;left:0}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(6,9,15,0.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(0,180,255,0.14);border-radius:12px;padding:14px 16px;min-width:238px;font-size:0.82rem}
+h1{font-size:0.7rem;letter-spacing:0.14em;text-transform:uppercase;color:#0090c0;margin-bottom:11px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.row label{width:96px;color:#6090b0;flex-shrink:0;font-size:0.78rem}
+.row input[type=range]{flex:1;accent-color:#00c0f0;cursor:pointer}
+.val{width:36px;text-align:right;color:#00b0e8;font-size:0.74rem;font-variant-numeric:tabular-nums}
+.section{font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;color:#0060a0;margin:9px 0 5px;border-top:1px solid rgba(0,140,255,0.08);padding-top:7px}
+.btn-row{display:flex;gap:5px;margin-top:9px}
+button{flex:1;background:rgba(0,150,255,0.07);border:1px solid rgba(0,150,255,0.18);color:#0090c0;border-radius:6px;padding:5px 4px;font-size:0.73rem;cursor:pointer;transition:background .15s,border-color .15s}
+button:hover{background:rgba(0,170,255,0.15)}
+button.on{background:rgba(0,200,255,0.12);border-color:rgba(0,200,255,0.28);color:#00c8ff}
+#prog{margin-top:10px;height:4px;border-radius:3px;background:rgba(0,80,140,0.3);overflow:hidden}
+#prog-fill{height:100%;width:0;background:linear-gradient(90deg,#00c8ff,#00ff88);border-radius:3px;transition:width .08s}
+.info-box{font-size:0.69rem;color:#3a5870;line-height:1.75;margin-top:5px}
+.info-box em{color:#2a6090;font-style:normal}
+#stats{position:fixed;top:16px;right:16px;z-index:10;background:rgba(6,9,15,0.86);backdrop-filter:blur(10px);border:1px solid rgba(0,140,255,0.09);border-radius:10px;padding:10px 14px;font-size:0.73rem;color:#3a6080;text-align:right;line-height:1.95}
+#stats span{color:#0090c8;font-variant-numeric:tabular-nums}
+#s-status{display:block;font-size:0.69rem;margin-top:2px}
+.st-run{color:#00a0d4!important}
+.st-ok{color:#00cc80!important}
+.st-err{color:#ff4060!important}
+.st-pause{color:#7090a0!important}
+#legend-row{display:flex;justify-content:space-between;font-size:0.62rem;color:#3a5870;margin-bottom:3px}
+#legend-bar{height:7px;border-radius:4px;background:linear-gradient(90deg,hsl(45,90%,42%),hsl(160,65%,22%),hsl(220,55%,8%));opacity:0.82}
+#hint{position:fixed;bottom:36px;left:50%;transform:translateX(-50%);color:rgba(0,140,200,0.22);font-size:0.7rem;pointer-events:none;white-space:nowrap;letter-spacing:0.04em}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.16);font-size:0.7rem}
+footer a{color:rgba(255,255,255,0.24);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.5)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <h1>057 · Wave Function Collapse</h1>
+
+  <div class="section">Grid</div>
+  <div class="row"><label>Cell Size</label><input type="range" id="s-cell" min="8" max="40" step="2" value="20"><span class="val" id="v-cell">20</span></div>
+
+  <div class="section">Algorithm</div>
+  <div class="row"><label>Speed</label><input type="range" id="s-speed" min="1" max="300" step="1" value="25"><span class="val" id="v-speed">25</span></div>
+
+  <div class="btn-row">
+    <button id="btn-restart">↺ Restart</button>
+    <button id="btn-pause" class="on">⏸ Pause</button>
+    <button id="btn-step">→ Step</button>
+  </div>
+
+  <div id="prog"><div id="prog-fill"></div></div>
+
+  <div class="section">Entropy Legend</div>
+  <div id="legend-row"><span>Certain ▶</span><span>▶ Uncertain</span></div>
+  <div id="legend-bar"></div>
+
+  <div class="section">About</div>
+  <div class="info-box">
+    WFC collapses each cell's <em>superposition</em><br>
+    of tile options using constraint propagation.<br>
+    <em>Gold</em> → nearly decided · <em>Dark</em> → uncertain<br>
+    Click the canvas to force-collapse a cell.
+  </div>
+</div>
+
+<div id="stats">
+  Cells: <span id="st-c">0</span> / <span id="st-t">0</span><br>
+  Grid: <span id="st-g">—</span><br>
+  <span id="s-status" class="st-run">Initialising…</span>
+</div>
+
+<div id="hint">Click any cell to collapse it · Space = pause · R = restart</div>
+
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 057</footer>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════
+//  TILE DEFINITIONS
+//  edges = [N, E, S, W]  where 0 = empty, 1 = wire
+// ═══════════════════════════════════════════════════════════════
+const TILES = [
+  { name:'blank',  edges:[0,0,0,0], weight:5 },
+  { name:'horiz',  edges:[0,1,0,1], weight:4 },
+  { name:'vert',   edges:[1,0,1,0], weight:4 },
+  { name:'cross',  edges:[1,1,1,1], weight:1 },
+  { name:'c_ne',   edges:[1,1,0,0], weight:2 },   // ┌
+  { name:'c_se',   edges:[0,1,1,0], weight:2 },   // └
+  { name:'c_sw',   edges:[0,0,1,1], weight:2 },   // ┘
+  { name:'c_nw',   edges:[1,0,0,1], weight:2 },   // ┐
+  { name:'t_mn',   edges:[0,1,1,1], weight:1 },   // ┬ (missing N)
+  { name:'t_me',   edges:[1,0,1,1], weight:1 },   // ┤ (missing E)
+  { name:'t_ms',   edges:[1,1,0,1], weight:1 },   // ┴ (missing S)
+  { name:'t_mw',   edges:[1,1,1,0], weight:1 },   // ├ (missing W)
+];
+
+const NT = TILES.length;
+const WEIGHTS = TILES.map(t => t.weight);
+const SUM_W = WEIGHTS.reduce((a, b) => a + b, 0);
+const LOG_W  = WEIGHTS.map(w => w * Math.log(w));
+const BASE_E = Math.log(SUM_W) - LOG_W.reduce((a, b) => a + b, 0) / SUM_W;
+
+// Direction helpers: 0=N 1=E 2=S 3=W
+const DX = [0, 1, 0, -1];
+const DY = [-1, 0, 1, 0];
+
+// CAN_SUPPORT[t][d] = source tiles that allow tile t as neighbor in direction d
+// (source.edges[d] must equal t.edges[opposite(d)])
+const CAN_SUPPORT = TILES.map((tT, _t) =>
+  [0, 1, 2, 3].map(d => {
+    const opp = (d + 2) % 4;
+    return TILES.reduce((acc, tS, s) => {
+      if (tS.edges[d] === tT.edges[opp]) acc.push(s);
+      return acc;
+    }, []);
+  })
+);
+
+// ═══════════════════════════════════════════════════════════════
+//  WFC STATE
+// ═══════════════════════════════════════════════════════════════
+let GW = 0, GH = 0;
+let wave = [];       // wave[y][x] = Uint8Array(NT)
+let ent  = [];       // ent[y][x]  = shannon entropy
+let col  = [];       // col[y][x]  = tile index | -1
+let numCol = 0, numTotal = 0;
+let propQ = [];      // propagation queue
+let contradiction = false, done = false;
+let flashes = [];    // [{x,y,t}] — newly collapsed cells for flash FX
+
+function shannonEnt(y, x) {
+  let sw = 0, swlw = 0;
+  const w = wave[y][x];
+  for (let t = 0; t < NT; t++) {
+    if (w[t]) { sw += WEIGHTS[t]; swlw += LOG_W[t]; }
+  }
+  return sw > 0 ? Math.log(sw) - swlw / sw : 0;
+}
+
+function initWFC() {
+  numCol = 0; numTotal = GW * GH;
+  propQ = []; contradiction = false; done = false; flashes = [];
+  wave = []; ent = []; col = [];
+  for (let y = 0; y < GH; y++) {
+    wave[y] = []; ent[y] = []; col[y] = [];
+    for (let x = 0; x < GW; x++) {
+      wave[y][x] = new Uint8Array(NT).fill(1);
+      ent[y][x]  = BASE_E;
+      col[y][x]  = -1;
+    }
+  }
+}
+
+function collapseAt(y, x, hint) {
+  if (col[y][x] >= 0) return;
+
+  let chosen = hint;
+  if (chosen === undefined) {
+    let total = 0;
+    for (let t = 0; t < NT; t++) if (wave[y][x][t]) total += WEIGHTS[t];
+    if (total <= 0) { contradiction = true; return; }
+    let r = Math.random() * total;
+    for (let t = 0; t < NT; t++) {
+      if (wave[y][x][t]) { r -= WEIGHTS[t]; if (r <= 0) { chosen = t; break; } }
+    }
+    if (chosen === undefined) chosen = NT - 1;
+  }
+  if (!wave[y][x][chosen]) { contradiction = true; return; }
+
+  for (let t = 0; t < NT; t++) wave[y][x][t] = (t === chosen) ? 1 : 0;
+  col[y][x] = chosen;
+  numCol++;
+  flashes.push({ x, y, t: performance.now() });
+  propQ.push([y, x]);
+}
+
+function propagate() {
+  const inQ = new Uint8Array(GW * GH);
+  while (propQ.length > 0) {
+    const [cy, cx] = propQ.shift();
+    inQ[cy * GW + cx] = 0;
+
+    for (let d = 0; d < 4; d++) {
+      const nx = cx + DX[d], ny = cy + DY[d];
+      if (nx < 0 || nx >= GW || ny < 0 || ny >= GH) continue;
+      if (col[ny][nx] >= 0) continue; // already collapsed
+
+      let changed = false;
+      const wn = wave[ny][nx], wc = wave[cy][cx];
+
+      for (let t = 0; t < NT; t++) {
+        if (!wn[t]) continue;
+        let ok = false;
+        for (const s of CAN_SUPPORT[t][d]) {
+          if (wc[s]) { ok = true; break; }
+        }
+        if (!ok) { wn[t] = 0; changed = true; }
+      }
+
+      if (changed) {
+        let rem = 0, last = -1;
+        for (let t = 0; t < NT; t++) if (wn[t]) { rem++; last = t; }
+        if (rem === 0) { contradiction = true; return; }
+        ent[ny][nx] = shannonEnt(ny, nx);
+        if (rem === 1 && col[ny][nx] < 0) {
+          col[ny][nx] = last; numCol++;
+          flashes.push({ x: nx, y: ny, t: performance.now() });
+        }
+        if (!inQ[ny * GW + nx]) { inQ[ny * GW + nx] = 1; propQ.push([ny, nx]); }
+      }
+    }
+  }
+}
+
+function pickLowestEntropy() {
+  let best = Infinity, bx = -1, by = -1;
+  for (let y = 0; y < GH; y++)
+    for (let x = 0; x < GW; x++) {
+      if (col[y][x] >= 0) continue;
+      const e = ent[y][x] + Math.random() * 1e-8;
+      if (e < best) { best = e; bx = x; by = y; }
+    }
+  return bx < 0 ? null : [by, bx];
+}
+
+function wfcStep() {
+  if (done || contradiction) return;
+  const cell = pickLowestEntropy();
+  if (!cell) { done = true; return; }
+  collapseAt(cell[0], cell[1]);
+  propagate();
+  if (!contradiction && numCol >= numTotal) done = true;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RENDERING
+// ═══════════════════════════════════════════════════════════════
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let OX = 0, OY = 0, CELL = 20;
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  GW = Math.max(1, Math.floor(canvas.width  / CELL));
+  GH = Math.max(1, Math.floor(canvas.height / CELL));
+  OX = Math.floor((canvas.width  - GW * CELL) / 2);
+  OY = Math.floor((canvas.height - GH * CELL) / 2);
+}
+
+// Map entropy → HSL color (gold=certain, dark navy=uncertain)
+function entropyColor(e) {
+  const t = Math.min(1, e / BASE_E);
+  const h = Math.round(45  + (220 - 45)  * t);
+  const s = Math.round(90  - 45 * t);
+  const l = Math.round(42  - 37 * t * t);
+  return `hsl(${h},${s}%,${l}%)`;
+}
+
+function drawTile(px, py, tileIdx) {
+  const cs = CELL, cx = px + cs / 2, cy = py + cs / 2;
+  const tile = TILES[tileIdx];
+
+  // Cell background
+  ctx.fillStyle = '#090e16';
+  ctx.fillRect(px, py, cs, cs);
+
+  if (!tile.edges.some(Boolean)) return; // blank — just dark square
+
+  const lw = Math.max(1.8, cs * 0.17);
+
+  // Outer glow (wide soft pass)
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0,180,255,0.12)';
+  ctx.lineWidth   = lw * 3.5;
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  for (let d = 0; d < 4; d++) {
+    if (!tile.edges[d]) continue;
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(px + (d === 1 ? cs : d === 3 ? 0 : cs / 2),
+               py + (d === 0 ? 0  : d === 2 ? cs : cs / 2));
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // Main wire (sharp, glowing)
+  ctx.save();
+  ctx.strokeStyle = '#00d0ff';
+  ctx.shadowColor = '#00a8d8';
+  ctx.shadowBlur  = cs * 0.45;
+  ctx.lineWidth   = lw;
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  for (let d = 0; d < 4; d++) {
+    if (!tile.edges[d]) continue;
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(px + (d === 1 ? cs : d === 3 ? 0 : cs / 2),
+               py + (d === 0 ? 0  : d === 2 ? cs : cs / 2));
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // Centre junction dot (for multi-connection tiles)
+  const wc = tile.edges.reduce((a, b) => a + b, 0);
+  if (wc > 1) {
+    const r = Math.max(1.5, cs * 0.09);
+    ctx.save();
+    ctx.fillStyle   = '#00ff88';
+    ctx.shadowColor = '#00ff88';
+    ctx.shadowBlur  = cs * 0.55;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Edge connector pads (where wires meet cell borders)
+  ctx.save();
+  ctx.fillStyle   = '#00d0ff';
+  ctx.shadowColor = '#00c0f0';
+  ctx.shadowBlur  = cs * 0.3;
+  for (let d = 0; d < 4; d++) {
+    if (!tile.edges[d]) continue;
+    const ex = px + (d === 1 ? cs : d === 3 ? 0 : cs / 2);
+    const ey = py + (d === 0 ? 0  : d === 2 ? cs : cs / 2);
+    ctx.beginPath();
+    ctx.arc(ex, ey, Math.max(1, cs * 0.065), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawUnknown(px, py, e) {
+  ctx.fillStyle = entropyColor(e);
+  ctx.fillRect(px, py, CELL, CELL);
+}
+
+function render() {
+  ctx.fillStyle = '#060910';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (!GW || !GH || !wave.length) return;
+
+  const now = performance.now();
+
+  // Cells
+  for (let y = 0; y < GH; y++) {
+    for (let x = 0; x < GW; x++) {
+      const px = OX + x * CELL, py = OY + y * CELL;
+      if (col[y][x] >= 0) drawTile(px, py, col[y][x]);
+      else                  drawUnknown(px, py, ent[y][x]);
+    }
+  }
+
+  // Flash animation for newly collapsed cells
+  flashes = flashes.filter(f => {
+    const age = (now - f.t) / 550;
+    if (age >= 1) return false;
+    const alpha = Math.sin(age * Math.PI) * 0.65;
+    ctx.fillStyle = `rgba(0,255,130,${alpha.toFixed(3)})`;
+    ctx.fillRect(OX + f.x * CELL, OY + f.y * CELL, CELL, CELL);
+    return true;
+  });
+
+  // Subtle grid overlay
+  ctx.strokeStyle = 'rgba(0,110,180,0.07)';
+  ctx.lineWidth   = 0.5;
+  ctx.beginPath();
+  for (let x = 0; x <= GW; x++) {
+    ctx.moveTo(OX + x * CELL, OY);
+    ctx.lineTo(OX + x * CELL, OY + GH * CELL);
+  }
+  for (let y = 0; y <= GH; y++) {
+    ctx.moveTo(OX,           OY + y * CELL);
+    ctx.lineTo(OX + GW * CELL, OY + y * CELL);
+  }
+  ctx.stroke();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ANIMATION LOOP
+// ═══════════════════════════════════════════════════════════════
+let paused = false, speed = 25;
+let restartTimer = null;
+let animId = null;
+
+function updateUI() {
+  document.getElementById('st-c').textContent = numCol;
+  document.getElementById('st-t').textContent = numTotal;
+  document.getElementById('st-g').textContent = `${GW}×${GH}`;
+  document.getElementById('prog-fill').style.width =
+    numTotal ? `${(numCol / numTotal * 100).toFixed(1)}%` : '0%';
+
+  const msg = document.getElementById('s-status');
+  if (contradiction) {
+    msg.textContent = 'Contradiction — restarting…';
+    msg.className = 'st-err';
+  } else if (done) {
+    msg.textContent = 'Complete ✓';
+    msg.className = 'st-ok';
+  } else if (paused) {
+    msg.textContent = 'Paused';
+    msg.className = 'st-pause';
+  } else {
+    msg.textContent = 'Running…';
+    msg.className = 'st-run';
+  }
+}
+
+function animate() {
+  animId = requestAnimationFrame(animate);
+
+  if (!paused && !done && !contradiction) {
+    for (let i = 0; i < speed; i++) {
+      wfcStep();
+      if (done || contradiction) break;
+    }
+  }
+
+  render();
+  updateUI();
+
+  // Auto-restart after contradiction
+  if (contradiction && !restartTimer) {
+    restartTimer = setTimeout(() => { restartTimer = null; restart(); }, 850);
+  }
+}
+
+function restart() {
+  if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+  resize();
+  initWFC();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CONTROLS
+// ═══════════════════════════════════════════════════════════════
+function bindSlider(id, valId, cb) {
+  const el = document.getElementById(id);
+  const vl = document.getElementById(valId);
+  el.addEventListener('input', () => { vl.textContent = el.value; cb(+el.value); });
+}
+
+bindSlider('s-cell',  'v-cell',  v => { CELL = v; restart(); });
+bindSlider('s-speed', 'v-speed', v => { speed = v; });
+
+document.getElementById('btn-restart').addEventListener('click', restart);
+
+document.getElementById('btn-pause').addEventListener('click', () => {
+  paused = !paused;
+  const btn = document.getElementById('btn-pause');
+  btn.textContent = paused ? '▶ Resume' : '⏸ Pause';
+  btn.classList.toggle('on', !paused);
+});
+
+document.getElementById('btn-step').addEventListener('click', () => {
+  if (!paused) {
+    paused = true;
+    const btn = document.getElementById('btn-pause');
+    btn.textContent = '▶ Resume';
+    btn.classList.remove('on');
+  }
+  wfcStep();
+});
+
+// Click canvas → force-collapse that cell
+canvas.addEventListener('click', e => {
+  if (!GW || !GH || !wave.length) return;
+  const x = Math.floor((e.clientX - OX) / CELL);
+  const y = Math.floor((e.clientY - OY) / CELL);
+  if (x < 0 || x >= GW || y < 0 || y >= GH || col[y][x] >= 0) return;
+  collapseAt(y, x);
+  propagate();
+  if (!contradiction && numCol >= numTotal) done = true;
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    document.getElementById('btn-pause').click();
+  } else if (e.code === 'KeyR') {
+    restart();
+  } else if (e.code === 'ArrowRight') {
+    if (!paused) { paused = true; document.getElementById('btn-pause').textContent = '▶ Resume'; document.getElementById('btn-pause').classList.remove('on'); }
+    wfcStep();
+  }
+});
+
+window.addEventListener('resize', restart);
+
+// ═══════════════════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════════════════
+resize();
+initWFC();
+animate();
+</script>
+</body>
+</html>
