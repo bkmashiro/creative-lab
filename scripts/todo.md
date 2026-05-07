@@ -64,7 +64,7 @@
 - [x] 055 Mandelbulb (3D fractal raymarching, WebGL)
 - [x] 056 Voronoi 3D (Fortune's in 3D, projected, WebGL)
 - [x] 057 Wave Function Collapse (procedural tile generation, canvas)
-- [ ] 058 Space Filling Curves (Hilbert, Peano — animated unfolding)
+- [x] 058 Space Filling Curves (Hilbert, Peano — animated unfolding)
 
 ### Life & Emergence
 - [ ] 059 Slime Mold (Physarum polycephalum, trail diffusion, WebGL)
