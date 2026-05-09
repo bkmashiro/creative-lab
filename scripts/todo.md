@@ -67,7 +67,7 @@
 - [x] 058 Space Filling Curves (Hilbert, Peano — animated unfolding)
 
 ### Life & Emergence
-- [ ] 059 Slime Mold (Physarum polycephalum, trail diffusion, WebGL)
+- [x] 059 Slime Mold (Physarum polycephalum, trail diffusion, WebGL)
 - [ ] 060 Ant Colony (pheromone trails, food seeking, canvas)
 - [ ] 061 Genetic Algorithm (evolving shapes to match target, visualized)
 - [ ] 062 Flocking 3D (Boids in 3D, WebGL spheres)
