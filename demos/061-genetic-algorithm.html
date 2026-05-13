@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#061 Genetic Algorithm — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden}
+canvas#c{display:block;position:fixed;top:0;left:0;cursor:crosshair}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(0,0,0,0.68);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;min-width:248px;font-size:0.82rem}
+h1{font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase;color:#58a6ff;margin-bottom:11px}
+.info{color:#4a6a8a;font-size:0.74rem;margin-bottom:8px}
+.statrow{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;color:#8b949e;font-size:0.78rem}
+.statrow span{color:#58a6ff;font-variant-numeric:tabular-nums;font-size:0.8rem}
+#fitbar{height:5px;background:rgba(255,255,255,0.08);border-radius:3px;margin:6px 0 10px;overflow:hidden}
+#fitfill{height:100%;background:linear-gradient(90deg,#1f6feb,#58a6ff,#79c0ff);border-radius:3px;width:0%;transition:width .4s}
+#histcv{display:block;width:100%;height:44px;margin-bottom:10px;border-radius:6px;background:rgba(255,255,255,0.03)}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.row label{width:82px;color:#c9d1d9;flex-shrink:0;font-size:0.79rem}
+.row input[type=range]{flex:1;accent-color:#58a6ff;cursor:pointer}
+.val{width:36px;text-align:right;color:#58a6ff;font-size:0.74rem;font-variant-numeric:tabular-nums}
+.btn-row{display:flex;gap:5px;margin-bottom:8px}
+button{flex:1;background:rgba(88,166,255,0.08);border:1px solid rgba(88,166,255,0.2);color:#58a6ff;border-radius:6px;padding:5px 4px;font-size:0.74rem;cursor:pointer;transition:background .15s,border-color .15s}
+button:hover{background:rgba(88,166,255,0.18);border-color:rgba(88,166,255,0.38)}
+button.active{background:rgba(88,166,255,0.28);border-color:rgba(88,166,255,0.52)}
+.tgt-row{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.tgt-row button{font-size:0.7rem;padding:4px 2px}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.22);font-size:0.7rem;z-index:10}
+footer a{color:rgba(255,255,255,0.28);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.6)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <h1>061 · Genetic Algorithm</h1>
+  <div class="info">Evolving triangles → target image</div>
+  <div class="statrow">Generation <span id="v-gen">0</span></div>
+  <div class="statrow">Fitness <span id="v-fit">0.00%</span></div>
+  <div class="statrow">Speed <span id="v-gps">—</span> gen/s</div>
+  <div id="fitbar"><div id="fitfill"></div></div>
+  <canvas id="histcv"></canvas>
+  <div class="row"><label>Steps/frame</label><input type="range" id="s-spd" min="1" max="80" value="25" step="1"><span class="val" id="v-spd">25</span></div>
+  <div class="row"><label>Triangles</label><input type="range" id="s-tri" min="10" max="200" value="80" step="10"><span class="val" id="v-tri">80</span></div>
+  <div class="row"><label>Mutation</label><input type="range" id="s-mut" min="1" max="40" value="8" step="1"><span class="val" id="v-mut">8%</span></div>
+  <div class="btn-row">
+    <button id="btn-pause">Pause</button>
+    <button id="btn-reset">Reset</button>
+    <button id="btn-diff">Diff</button>
+  </div>
+  <div class="tgt-row">
+    <button class="tgt active" data-t="0">🌅 Sunset</button>
+    <button class="tgt" data-t="1">🧑 Portrait</button>
+    <button class="tgt" data-t="2">🎨 Abstract</button>
+    <button class="tgt" data-t="3">🔲 Mondrian</button>
+  </div>
+</div>
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 061</footer>
+
+<script>
+'use strict';
+
+// ── Config ────────────────────────────────────────────────────────────
+const EW = 180, EH = 180;     // eval/fitness canvas resolution
+let N_TRI = 80;                // triangles per genome
+let MUT_RATE = 0.08;           // fraction of triangles mutated per step
+let STEPS_PER_FRAME = 25;      // evolution steps per animation frame
+
+// ── Canvas Setup ──────────────────────────────────────────────────────
+const mainCv = document.getElementById('c');
+const ctx    = mainCv.getContext('2d');
+
+// Off-screen canvas for rendering genome & computing fitness
+const evalCv  = document.createElement('canvas');
+evalCv.width  = EW; evalCv.height = EH;
+const evalCtx = evalCv.getContext('2d', { willReadFrequently: true });
+
+// Off-screen canvas that holds the target image
+const tgtCv  = document.createElement('canvas');
+tgtCv.width  = EW; tgtCv.height = EH;
+const tgtCtx = tgtCv.getContext('2d');
+
+const histCv  = document.getElementById('histcv');
+const histCtx = histCv.getContext('2d');
+
+// ── State ─────────────────────────────────────────────────────────────
+let genome        = [];          // current best individual (array of Float32Array)
+let fitness       = 0;           // current best fitness 0–1
+let generation    = 0;
+let running       = true;
+let showDiff      = false;
+let currentTarget = 0;
+let targetData    = null;        // Uint8ClampedArray, EW*EH*4
+
+let fitnessHistory = [];         // ring buffer of fitness values
+const HIST_LEN     = 400;
+
+let flashTimer  = 0;             // frames of "improved" glow remaining
+let lastSecTime = performance.now();
+let lastSecGen  = 0;
+let genPerSec   = 0;
+
+// ── Triangle Genome ───────────────────────────────────────────────────
+// Float32Array: [r,g,b,a, x1,y1, x2,y2, x3,y3]  — all values 0–1
+
+function randTri() {
+  return new Float32Array([
+    Math.random(), Math.random(), Math.random(),
+    Math.random() * 0.55 + 0.08,   // alpha 0.08–0.63
+    Math.random(), Math.random(),
+    Math.random(), Math.random(),
+    Math.random(), Math.random()
+  ]);
+}
+
+function createGenome() {
+  return Array.from({ length: N_TRI }, randTri);
+}
+
+function copyGenome(g) {
+  return g.map(t => new Float32Array(t));
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────
+function renderGenome(g, rctx, w, h) {
+  rctx.fillStyle = '#000';
+  rctx.fillRect(0, 0, w, h);
+  for (const t of g) {
+    rctx.fillStyle =
+      `rgba(${t[0]*255|0},${t[1]*255|0},${t[2]*255|0},${t[3].toFixed(3)})`;
+    rctx.beginPath();
+    rctx.moveTo(t[4]*w, t[5]*h);
+    rctx.lineTo(t[6]*w, t[7]*h);
+    rctx.lineTo(t[8]*w, t[9]*h);
+    rctx.fill();
+  }
+}
+
+// ── Fitness (Mean Squared Error, inverted) ─────────────────────────────
+function computeFitness(g) {
+  renderGenome(g, evalCtx, EW, EH);
+  const data = evalCtx.getImageData(0, 0, EW, EH).data;
+  let diff = 0;
+  const len = EW * EH * 4;
+  for (let i = 0; i < len; i += 4) {
+    const dr = data[i]   - targetData[i];
+    const dg = data[i+1] - targetData[i+1];
+    const db = data[i+2] - targetData[i+2];
+    diff += dr*dr + dg*dg + db*db;
+  }
+  return 1 - diff / (EW * EH * 3 * 255 * 255);
+}
+
+// ── Mutation ──────────────────────────────────────────────────────────
+function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+function gauss() {
+  // Box-Muller transform
+  return Math.sqrt(-2 * Math.log(Math.random() + 1e-12))
+       * Math.cos(2 * Math.PI * Math.random());
+}
+
+function mutate(g) {
+  const child = copyGenome(g);
+  // Number of triangles to mutate this step
+  const nMut = Math.max(1, Math.round(N_TRI * MUT_RATE * 0.6) + (Math.random() < 0.5 ? 1 : 0));
+  for (let m = 0; m < nMut; m++) {
+    const idx = Math.random() * N_TRI | 0;
+    const t   = child[idx];
+    const r   = Math.random();
+    if (r < 0.28) {
+      // Mutate colour channels
+      t[0] = clamp01(t[0] + gauss() * 0.12);
+      t[1] = clamp01(t[1] + gauss() * 0.12);
+      t[2] = clamp01(t[2] + gauss() * 0.12);
+    } else if (r < 0.36) {
+      // Mutate alpha
+      t[3] = clamp01(t[3] + gauss() * 0.10);
+    } else if (r < 0.88) {
+      // Mutate vertex positions — occasionally large jump
+      const sigma = Math.random() < 0.15 ? 0.35 : 0.06;
+      for (let j = 4; j < 10; j++) t[j] = clamp01(t[j] + gauss() * sigma);
+    } else {
+      // Replace entire triangle randomly
+      child[idx] = randTri();
+    }
+  }
+  return child;
+}
+
+// ── (1+1)–ES Evolution Step ───────────────────────────────────────────
+function evolveStep() {
+  const child  = mutate(genome);
+  const childF = computeFitness(child);
+  if (childF >= fitness) {
+    const improved = childF > fitness + 1e-7;
+    genome  = child;
+    fitness = childF;
+    if (improved) flashTimer = 22;
+  }
+  generation++;
+}
+
+// ── Display ───────────────────────────────────────────────────────────
+function resize() {
+  mainCv.width  = window.innerWidth;
+  mainCv.height = window.innerHeight;
+  histCv.width  = histCv.offsetWidth;
+  histCv.height = histCv.offsetHeight;
+}
+
+function drawDisplay() {
+  const W = mainCv.width, H = mainCv.height;
+  const half = W * 0.5;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // ─ Left: target ───────────────────────────────────────────────────
+  ctx.drawImage(tgtCv, 0, 0, half, H);
+
+  // ─ Right: evolved or diff ─────────────────────────────────────────
+  if (showDiff) {
+    renderGenome(genome, evalCtx, EW, EH);
+    const evolvedData = evalCtx.getImageData(0, 0, EW, EH).data;
+    const diffImg     = evalCtx.createImageData(EW, EH);
+    const dd          = diffImg.data;
+    for (let i = 0; i < evolvedData.length; i += 4) {
+      const dr  = Math.abs(evolvedData[i]   - targetData[i]);
+      const dg  = Math.abs(evolvedData[i+1] - targetData[i+1]);
+      const db  = Math.abs(evolvedData[i+2] - targetData[i+2]);
+      const err = (dr + dg + db) / 3;
+      // heat-map: dark blue → cyan → yellow → red
+      if (err < 64) {
+        dd[i]=0; dd[i+1]=err*3|0; dd[i+2]=255;
+      } else if (err < 128) {
+        dd[i]=0; dd[i+1]=255; dd[i+2]=255-(err-64)*4|0;
+      } else if (err < 192) {
+        dd[i]=(err-128)*4|0; dd[i+1]=255; dd[i+2]=0;
+      } else {
+        dd[i]=255; dd[i+1]=255-(err-192)*4|0; dd[i+2]=0;
+      }
+      dd[i+3] = 255;
+    }
+    evalCtx.putImageData(diffImg, 0, 0);
+    ctx.drawImage(evalCv, half, 0, half, H);
+  } else {
+    renderGenome(genome, evalCtx, EW, EH);
+    ctx.drawImage(evalCv, half, 0, half, H);
+  }
+
+  // ─ Improvement flash ──────────────────────────────────────────────
+  if (flashTimer > 0) {
+    const alpha = (flashTimer / 22) * 0.25;
+    ctx.fillStyle = `rgba(0,200,120,${alpha.toFixed(3)})`;
+    ctx.fillRect(half, 0, half, H);
+    flashTimer--;
+  }
+
+  // ─ Centre divider ─────────────────────────────────────────────────
+  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(half, 0);
+  ctx.lineTo(half, H);
+  ctx.stroke();
+
+  // ─ Labels ─────────────────────────────────────────────────────────
+  ctx.font      = '11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+  ctx.textAlign = 'center';
+
+  ctx.fillStyle = 'rgba(255,255,255,0.28)';
+  ctx.fillText('TARGET', half * 0.5, 22);
+
+  const rightLabel = showDiff
+    ? 'ERROR MAP'
+    : `EVOLVED  ·  GEN ${generation.toLocaleString()}  ·  ${(fitness*100).toFixed(1)}%`;
+  ctx.fillStyle = showDiff ? 'rgba(255,200,80,0.5)' : 'rgba(88,166,255,0.5)';
+  ctx.fillText(rightLabel, half + half * 0.5, 22);
+}
+
+// ── Fitness History Graph ──────────────────────────────────────────────
+function drawHistory() {
+  const w = histCv.width, h = histCv.height;
+  if (!w || !h) return;
+  histCtx.clearRect(0, 0, w, h);
+  const len = fitnessHistory.length;
+  if (len < 2) return;
+
+  // Fill
+  histCtx.beginPath();
+  for (let i = 0; i < len; i++) {
+    const x = (i / (HIST_LEN - 1)) * w;
+    const y = h - fitnessHistory[i] * h * 0.92 - 2;
+    if (i === 0) histCtx.moveTo(x, y); else histCtx.lineTo(x, y);
+  }
+  histCtx.lineTo((len-1)/(HIST_LEN-1)*w, h);
+  histCtx.lineTo(0, h);
+  histCtx.closePath();
+  histCtx.fillStyle = 'rgba(88,166,255,0.14)';
+  histCtx.fill();
+
+  // Line
+  histCtx.beginPath();
+  for (let i = 0; i < len; i++) {
+    const x = (i / (HIST_LEN - 1)) * w;
+    const y = h - fitnessHistory[i] * h * 0.92 - 2;
+    if (i === 0) histCtx.moveTo(x, y); else histCtx.lineTo(x, y);
+  }
+  histCtx.strokeStyle = '#58a6ff';
+  histCtx.lineWidth   = 1.5;
+  histCtx.stroke();
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────
+let histTick = 0;
+function updateStats() {
+  document.getElementById('v-gen').textContent = generation.toLocaleString();
+  document.getElementById('v-fit').textContent = (fitness * 100).toFixed(2) + '%';
+  document.getElementById('fitfill').style.width = (fitness * 100).toFixed(2) + '%';
+
+  histTick++;
+  if (histTick % 4 === 0) {
+    fitnessHistory.push(fitness);
+    if (fitnessHistory.length > HIST_LEN) fitnessHistory.shift();
+    drawHistory();
+  }
+
+  // gen/sec
+  const now = performance.now();
+  if (now - lastSecTime >= 1000) {
+    genPerSec   = ((generation - lastSecGen) * 1000 / (now - lastSecTime)) | 0;
+    lastSecTime = now;
+    lastSecGen  = generation;
+    document.getElementById('v-gps').textContent = genPerSec.toLocaleString();
+  }
+}
+
+// ── Target Image Drawers ──────────────────────────────────────────────
+
+function drawSunset(c, w, h) {
+  // Sky gradient
+  const sky = c.createLinearGradient(0, 0, 0, h * 0.72);
+  sky.addColorStop(0,   '#080820');
+  sky.addColorStop(0.3, '#6a1520');
+  sky.addColorStop(0.6, '#e04020');
+  sky.addColorStop(1,   '#f5a020');
+  c.fillStyle = sky;
+  c.fillRect(0, 0, w, h * 0.72);
+
+  // Sun glow radial
+  const sg = c.createRadialGradient(w*.62, h*.36, 0, w*.62, h*.36, w*.28);
+  sg.addColorStop(0,   'rgba(255,245,160,1)');
+  sg.addColorStop(0.2, 'rgba(255,180,50,.9)');
+  sg.addColorStop(0.55,'rgba(255,90,10,.4)');
+  sg.addColorStop(1,   'rgba(230,40,0,0)');
+  c.fillStyle = sg;
+  c.fillRect(0, 0, w, h * 0.72);
+
+  // Sun disk
+  c.fillStyle = '#fffef0';
+  c.beginPath();
+  c.arc(w*.62, h*.36, w*.072, 0, Math.PI*2);
+  c.fill();
+
+  // Mountains (silhouette)
+  c.fillStyle = '#12122a';
+  c.beginPath();
+  c.moveTo(0, h*.72);
+  const pts = [0,.52, .12,.32, .24,.46, .35,.24, .48,.44, .58,.28, .70,.48, .82,.34, .92,.46, 1,.4, 1,.72];
+  for (let i = 0; i < pts.length; i+=2) c.lineTo(pts[i]*w, pts[i+1]*h);
+  c.closePath();
+  c.fill();
+
+  // Ground
+  const gnd = c.createLinearGradient(0, h*.72, 0, h);
+  gnd.addColorStop(0, '#22180a');
+  gnd.addColorStop(1, '#080808');
+  c.fillStyle = gnd;
+  c.fillRect(0, h*.72, w, h*.28);
+
+  // Water shimmer (reflection column)
+  const wtr = c.createLinearGradient(0, h*.72, 0, h);
+  wtr.addColorStop(0, 'rgba(220,90,25,.42)');
+  wtr.addColorStop(.4, 'rgba(160,50,10,.18)');
+  wtr.addColorStop(1,  'rgba(0,0,0,0)');
+  c.fillStyle = wtr;
+  c.fillRect(w*.38, h*.72, w*.48, h*.28);
+
+  // Horizon reflection glint
+  for (let i = 0; i < 6; i++) {
+    c.fillStyle = `rgba(255,180,60,${0.06 + i*0.01})`;
+    c.fillRect(w*.5 + Math.sin(i*1.3)*w*.06, h*.72 + i*h*.02, w*.12, h*.008);
+  }
+}
+
+function drawPortrait(c, w, h) {
+  const bg = c.createLinearGradient(0, 0, w, h);
+  bg.addColorStop(0, '#16102a');
+  bg.addColorStop(1, '#0a1628');
+  c.fillStyle = bg;
+  c.fillRect(0, 0, w, h);
+
+  // Shoulders / shirt
+  c.fillStyle = '#1e3060';
+  c.beginPath();
+  c.moveTo(0, h);
+  c.lineTo(w*.22, h*.80);
+  c.lineTo(w*.40, h*.86);
+  c.lineTo(w*.60, h*.86);
+  c.lineTo(w*.78, h*.80);
+  c.lineTo(w, h);
+  c.closePath();
+  c.fill();
+
+  // Neck
+  c.fillStyle = '#c8855c';
+  c.fillRect(w*.43, h*.72, w*.14, h*.16);
+
+  // Face
+  c.fillStyle = '#d4936a';
+  c.beginPath();
+  c.ellipse(w*.5, h*.46, w*.21, h*.28, 0, 0, Math.PI*2);
+  c.fill();
+
+  // Hair (dark, wide arch over head)
+  c.fillStyle = '#1e1208';
+  c.beginPath();
+  c.arc(w*.5, h*.3, w*.24, Math.PI*.85, Math.PI*.15, false);
+  c.lineTo(w*.74, h*.46);
+  c.arc(w*.5, h*.46, w*.24, 0, Math.PI, true);
+  c.closePath();
+  c.fill();
+  // Side hair
+  c.fillRect(w*.28, h*.28, w*.06, h*.26);
+  c.fillRect(w*.66, h*.28, w*.06, h*.26);
+
+  // Eyebrows
+  c.strokeStyle = '#2a1a08';
+  c.lineWidth = w*.018;
+  c.lineCap = 'round';
+  c.beginPath();
+  c.moveTo(w*.32, h*.39); c.quadraticCurveTo(w*.385, h*.365, w*.45, h*.375);
+  c.moveTo(w*.55, h*.375); c.quadraticCurveTo(w*.615, h*.365, w*.68, h*.39);
+  c.stroke();
+
+  // Eyes — whites
+  c.fillStyle = '#f0ece6';
+  c.beginPath();
+  c.ellipse(w*.385, h*.435, w*.058, h*.036, 0, 0, Math.PI*2);
+  c.ellipse(w*.615, h*.435, w*.058, h*.036, 0, 0, Math.PI*2);
+  c.fill();
+
+  // Irises
+  c.fillStyle = '#3a2a10';
+  c.beginPath();
+  c.arc(w*.385, h*.435, w*.032, 0, Math.PI*2);
+  c.arc(w*.615, h*.435, w*.032, 0, Math.PI*2);
+  c.fill();
+
+  // Pupils
+  c.fillStyle = '#0a0806';
+  c.beginPath();
+  c.arc(w*.382, h*.432, w*.016, 0, Math.PI*2);
+  c.arc(w*.612, h*.432, w*.016, 0, Math.PI*2);
+  c.fill();
+
+  // Eye highlight
+  c.fillStyle = 'rgba(255,255,255,0.7)';
+  c.beginPath();
+  c.arc(w*.376, h*.424, w*.006, 0, Math.PI*2);
+  c.arc(w*.606, h*.424, w*.006, 0, Math.PI*2);
+  c.fill();
+
+  // Nose bridge & tip
+  c.strokeStyle = '#b07050';
+  c.lineWidth = w*.01;
+  c.beginPath();
+  c.moveTo(w*.5, h*.48);
+  c.lineTo(w*.47, h*.56);
+  c.lineTo(w*.46, h*.58);
+  c.lineTo(w*.54, h*.58);
+  c.lineTo(w*.53, h*.56);
+  c.stroke();
+
+  // Lips
+  c.fillStyle = '#b85848';
+  c.beginPath();
+  c.moveTo(w*.38, h*.64);
+  c.quadraticCurveTo(w*.5, h*.70, w*.62, h*.64);
+  c.quadraticCurveTo(w*.5, h*.66, w*.38, h*.64);
+  c.fill();
+  c.fillStyle = '#d06858';
+  c.beginPath();
+  c.moveTo(w*.38, h*.64);
+  c.quadraticCurveTo(w*.5, h*.61, w*.62, h*.64);
+  c.quadraticCurveTo(w*.5, h*.62, w*.38, h*.64);
+  c.fill();
+}
+
+function drawAbstract(c, w, h) {
+  c.fillStyle = '#04040a';
+  c.fillRect(0, 0, w, h);
+
+  const circles = [
+    [.50,.50,.36, 255, 40, 80],
+    [.22,.30,.24, 40, 80,255],
+    [.76,.28,.22,255,140, 20],
+    [.18,.72,.26, 20,220, 90],
+    [.72,.72,.30,180, 20,220],
+    [.50,.15,.17,255,230, 40],
+    [.50,.85,.20, 30,200,220],
+    [.12,.50,.14,255,100, 60],
+    [.88,.50,.16, 60,240,120],
+  ];
+
+  c.save();
+  for (const [cx,cy,r,rr,gg,bb] of circles) {
+    const g = c.createRadialGradient(cx*w,cy*h,0, cx*w,cy*h,r*w*1.6);
+    g.addColorStop(0,   `rgba(${rr},${gg},${bb},0.78)`);
+    g.addColorStop(0.45,`rgba(${rr},${gg},${bb},0.38)`);
+    g.addColorStop(1,   `rgba(${rr},${gg},${bb},0)`);
+    c.fillStyle = g;
+    c.beginPath();
+    c.arc(cx*w, cy*h, r*w*2, 0, Math.PI*2);
+    c.fill();
+  }
+
+  // Hard inner discs
+  for (const [cx,cy,r,rr,gg,bb] of circles.slice(0,6)) {
+    c.globalAlpha = 0.48;
+    c.fillStyle = `rgb(${rr},${gg},${bb})`;
+    c.beginPath();
+    c.arc(cx*w, cy*h, r*w*.38, 0, Math.PI*2);
+    c.fill();
+  }
+  c.globalAlpha = 1;
+
+  // White specular dots
+  for (const [cx,cy,,rr,gg,bb] of circles.slice(0,6)) {
+    c.fillStyle = `rgba(255,255,255,0.55)`;
+    c.beginPath();
+    c.arc(cx*w - w*.02, cy*h - h*.02, w*.008, 0, Math.PI*2);
+    c.fill();
+  }
+  c.restore();
+}
+
+function drawMondrian(c, w, h) {
+  const lw = Math.max(4, w * 0.035) | 0;
+
+  c.fillStyle = '#f4ede2';
+  c.fillRect(0, 0, w, h);
+
+  // Colour blocks [x,y,bw,bh,colour]
+  const blocks = [
+    [0,     0,    .44, .40, '#cc1e1e'],
+    [0,     .64,  .30, .36, '#1a5cbf'],
+    [.70,   0,    .30, .30, '#e8be18'],
+    [.70,   .64,  .30, .36, '#cc1e1e'],
+    [.44,   .40,  .26, .36, '#1a5cbf'],
+    [.44,   0,    .26, .22, '#e8be18'],
+  ];
+
+  const hl = lw * 0.5;
+  for (const [x,y,bw,bh,col] of blocks) {
+    c.fillStyle = col;
+    c.fillRect(x*w+hl, y*h+hl, bw*w-lw, bh*h-lw);
+  }
+
+  // Grid lines
+  c.strokeStyle = '#111';
+  c.lineWidth   = lw;
+  c.lineCap     = 'square';
+  const lines = [
+    [.44,0, .44,1],
+    [.70,0, .70,1],
+    [0,.40, 1,.40],
+    [0,.64, 1,.64],
+    [.30,.64,.30,1],
+    [.44,.22,.70,.22],
+    [0,.76, .30,.76],
+  ];
+  for (const [x1,y1,x2,y2] of lines) {
+    c.beginPath();
+    c.moveTo(x1*w, y1*h);
+    c.lineTo(x2*w, y2*h);
+    c.stroke();
+  }
+  c.strokeRect(hl, hl, w-lw, h-lw);
+}
+
+// ── Target Management ─────────────────────────────────────────────────
+const TARGET_DRAWERS = [drawSunset, drawPortrait, drawAbstract, drawMondrian];
+
+function buildTarget(idx) {
+  tgtCtx.clearRect(0, 0, EW, EH);
+  TARGET_DRAWERS[idx](tgtCtx, EW, EH);
+  targetData = tgtCtx.getImageData(0, 0, EW, EH).data;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────
+function init() {
+  buildTarget(currentTarget);
+  genome         = createGenome();
+  fitness        = computeFitness(genome);
+  generation     = 0;
+  fitnessHistory = [];
+  flashTimer     = 0;
+  lastSecTime    = performance.now();
+  lastSecGen     = 0;
+  genPerSec      = 0;
+  histTick       = 0;
+  document.getElementById('v-gps').textContent = '—';
+}
+
+// ── Animation Loop ────────────────────────────────────────────────────
+function loop() {
+  if (running) {
+    for (let i = 0; i < STEPS_PER_FRAME; i++) evolveStep();
+    updateStats();
+    drawDisplay();
+  }
+  requestAnimationFrame(loop);
+}
+
+// ── UI Wiring ─────────────────────────────────────────────────────────
+document.getElementById('btn-pause').addEventListener('click', function() {
+  running = !running;
+  this.textContent = running ? 'Pause' : 'Resume';
+  this.classList.toggle('active', !running);
+});
+
+document.getElementById('btn-reset').addEventListener('click', init);
+
+document.getElementById('btn-diff').addEventListener('click', function() {
+  showDiff = !showDiff;
+  this.textContent = showDiff ? 'Evolved' : 'Diff';
+  this.classList.toggle('active', showDiff);
+});
+
+document.getElementById('s-spd').addEventListener('input', function() {
+  STEPS_PER_FRAME = +this.value;
+  document.getElementById('v-spd').textContent = this.value;
+});
+
+document.getElementById('s-tri').addEventListener('input', function() {
+  N_TRI = +this.value;
+  document.getElementById('v-tri').textContent = this.value;
+  init();
+});
+
+document.getElementById('s-mut').addEventListener('input', function() {
+  MUT_RATE = +this.value / 100;
+  document.getElementById('v-mut').textContent = this.value + '%';
+});
+
+document.querySelectorAll('.tgt').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.tgt').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentTarget = +this.dataset.t;
+    init();
+  });
+});
+
+window.addEventListener('resize', () => {
+  resize();
+  if (!running) drawDisplay();
+});
+
+// ── Start ─────────────────────────────────────────────────────────────
+resize();
+init();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
