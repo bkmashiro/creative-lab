@@ -83,6 +83,7 @@
 | [059](demos/059-slime-mold.html) | Slime Mold | WebGL2, Physarum polycephalum multi-agent trail diffusion, 262K GPU agents, ping-pong textures, 4 color palettes |
 | [060](demos/060-ant-colony.html) | Ant Colony | Canvas 2D, dual pheromone trails (to-home/to-food), emergent path optimization, interactive food placement |
 | [061](demos/061-genetic-algorithm.html) | Genetic Algorithm | Canvas 2D, (1+1)-ES evolution, 80 semi-transparent triangles per genome, 4 target images, real-time fitness graph + diff heatmap |
+| [062](demos/062-flocking-3d.html) | Flocking 3D | WebGL2, instanced sphere rendering, 3D Boids (separation/alignment/cohesion), velocity-hue colouring, spatial hash grid, orbit camera |
 
 *More coming every 2 days →*
 

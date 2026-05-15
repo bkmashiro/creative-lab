@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#062 Flocking 3D — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#050510;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e0e8ff}
+canvas{display:block;position:fixed;top:0;left:0;width:100vw;height:100vh;cursor:grab}
+canvas.dragging{cursor:grabbing}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(5,5,20,0.78);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(120,160,255,0.15);border-radius:12px;padding:14px 16px;min-width:242px;font-size:0.82rem}
+h1{font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase;color:#7aaaff;margin-bottom:10px}
+.info{color:#2e4060;font-size:0.73rem;margin-bottom:9px}
+.statrow{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;color:#4a6a9a;font-size:0.77rem}
+.statrow span{color:#7aaaff;font-variant-numeric:tabular-nums;font-size:0.8rem}
+.sep{height:1px;background:rgba(120,160,255,0.1);margin:8px 0}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.row label{width:86px;color:#b8c8e0;flex-shrink:0;font-size:0.79rem}
+.row input[type=range]{flex:1;accent-color:#7aaaff;cursor:pointer}
+.val{width:38px;text-align:right;color:#7aaaff;font-size:0.74rem;font-variant-numeric:tabular-nums}
+.btn-row{display:flex;gap:5px;margin-top:10px}
+button{flex:1;background:rgba(122,170,255,0.08);border:1px solid rgba(122,170,255,0.2);color:#7aaaff;border-radius:6px;padding:5px 4px;font-size:0.74rem;cursor:pointer;transition:background .15s,border-color .15s}
+button:hover{background:rgba(122,170,255,0.18);border-color:rgba(122,170,255,0.38)}
+button.active{background:rgba(122,170,255,0.28);border-color:rgba(122,170,255,0.52)}
+#hint{position:fixed;bottom:14px;left:16px;color:rgba(122,170,255,0.2);font-size:0.68rem;pointer-events:none;line-height:1.7}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.22);font-size:0.7rem;z-index:10}
+footer a{color:rgba(255,255,255,0.28);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.6)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <h1>062 · Flocking 3D</h1>
+  <div class="info">Boids · WebGL2 · instanced spheres</div>
+  <div class="statrow">Boids <span id="v-n">200</span></div>
+  <div class="statrow">FPS  <span id="v-fps">—</span></div>
+  <div class="statrow">Lines <span id="v-lc">0</span></div>
+  <div class="sep"></div>
+  <div class="row"><label>Separation</label><input type="range" id="s-sep" min="0" max="6" value="1.5" step="0.1"><span class="val" id="v-sep">1.5</span></div>
+  <div class="row"><label>Alignment</label><input type="range" id="s-ali" min="0" max="6" value="1.0" step="0.1"><span class="val" id="v-ali">1.0</span></div>
+  <div class="row"><label>Cohesion</label><input type="range" id="s-coh" min="0" max="6" value="0.8" step="0.1"><span class="val" id="v-coh">0.8</span></div>
+  <div class="row"><label>Speed</label><input type="range" id="s-spd" min="0.3" max="3.0" value="1.0" step="0.1"><span class="val" id="v-spd">1.0×</span></div>
+  <div class="row"><label>Count</label><input type="range" id="s-cnt" min="30" max="400" value="200" step="10"><span class="val" id="v-cnt">200</span></div>
+  <div class="row"><label>Sep. Radius</label><input type="range" id="s-sr" min="3" max="20" value="7" step="0.5"><span class="val" id="v-sr">7.0</span></div>
+  <div class="btn-row">
+    <button id="btn-lines" class="active">Lines</button>
+    <button id="btn-box" class="active">Box</button>
+    <button id="btn-pause">Pause</button>
+    <button id="btn-reset">Reset</button>
+  </div>
+</div>
+<div id="hint">Drag to orbit · Scroll to zoom · Auto-spins when idle</div>
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 062</footer>
+
+<script>
+'use strict';
+
+// ── WebGL2 setup ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: true });
+if (!gl) { document.body.innerHTML = '<p style="color:#fff;padding:2em;font-family:sans-serif">WebGL2 is required. Please use a modern browser.</p>'; throw 0; }
+
+// ── Shader Sources ────────────────────────────────────────────────────────────
+const BOID_VS = `#version 300 es
+precision highp float;
+in vec3 aPos;   // sphere vertex position (unit sphere)
+in vec3 aNorm;  // sphere vertex normal
+in vec3 iOff;   // per-instance: world-space position
+in vec3 iCol;   // per-instance: base color
+in float iScl;  // per-instance: radius
+uniform mat4 uVP;
+out vec3 vNorm;
+out vec3 vWorld;
+out vec3 vCol;
+void main(){
+  vec3 world = aPos * iScl + iOff;
+  gl_Position = uVP * vec4(world, 1.0);
+  vNorm  = aNorm;   // uniform scale: world normal == local normal
+  vWorld = world;
+  vCol   = iCol;
+}`;
+
+const BOID_FS = `#version 300 es
+precision highp float;
+in vec3 vNorm;
+in vec3 vWorld;
+in vec3 vCol;
+uniform vec3 uCam;
+out vec4 fragColor;
+
+// Phong shading with two coloured point lights
+void main(){
+  vec3 N = normalize(vNorm);
+  vec3 V = normalize(uCam - vWorld);
+
+  // Warm key light (upper right)
+  vec3 L1 = normalize(vec3(90.0, 110.0, 50.0) - vWorld);
+  // Cool fill light (lower left)
+  vec3 L2 = normalize(vec3(-70.0, -50.0, 100.0) - vWorld);
+
+  float d1 = max(dot(N, L1), 0.0);
+  float d2 = max(dot(N, L2), 0.0);
+
+  vec3 H1 = normalize(L1 + V);
+  float sp = pow(max(dot(N, H1), 0.0), 64.0);
+
+  // warm light tints orange, cool light tints blue
+  vec3 col = vCol * (0.06
+    + d1 * 0.75 * vec3(1.06, 1.00, 0.88)
+    + d2 * 0.28 * vec3(0.80, 0.90, 1.12))
+    + vec3(sp * 0.85);
+
+  col = col / (col + 1.0);            // Reinhard
+  col = pow(max(col, 0.0), vec3(1.0/2.2)); // gamma
+  fragColor = vec4(col, 1.0);
+}`;
+
+const LINE_VS = `#version 300 es
+precision highp float;
+in vec3 aPos;
+uniform mat4 uVP;
+void main(){ gl_Position = uVP * vec4(aPos, 1.0); }`;
+
+const LINE_FS = `#version 300 es
+precision highp float;
+uniform vec4 uColor;
+out vec4 fragColor;
+void main(){ fragColor = uColor; }`;
+
+// ── Shader compile helpers ────────────────────────────────────────────────────
+function mkShader(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; }
+  return s;
+}
+function mkProg(vs, fs){
+  const p = gl.createProgram();
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(p)); }
+  return p;
+}
+
+// ── Matrix math ───────────────────────────────────────────────────────────────
+const M = {
+  mul(a, b){
+    const r = new Float32Array(16);
+    for (let i=0;i<4;i++) for (let j=0;j<4;j++){
+      let s=0; for(let k=0;k<4;k++) s+=a[i+k*4]*b[k+j*4]; r[i+j*4]=s;
+    }
+    return r;
+  },
+  perspective(fov, asp, n, f){
+    const t = 1/Math.tan(fov*0.5), nf=1/(n-f);
+    return new Float32Array([t/asp,0,0,0, 0,t,0,0, 0,0,(f+n)*nf,-1, 0,0,2*f*n*nf,0]);
+  },
+  lookAt(ex,ey,ez, tx,ty,tz){
+    let fx=tx-ex,fy=ty-ey,fz=tz-ez;
+    let fl=Math.hypot(fx,fy,fz); fx/=fl; fy/=fl; fz/=fl;
+    // right = fwd × up(0,1,0)
+    let rx=-fz, ry=0, rz=fx;
+    let rl=Math.hypot(rx,ry,rz)||1; rx/=rl; ry/=rl; rz/=rl;
+    let ux=fy*rz-fz*ry, uy=fz*rx-fx*rz, uz=fx*ry-fy*rx;
+    return new Float32Array([
+      rx,ux,-fx,0, ry,uy,-fy,0, rz,uz,-fz,0,
+      -(rx*ex+ry*ey+rz*ez), -(ux*ex+uy*ey+uz*ez), (fx*ex+fy*ey+fz*ez), 1
+    ]);
+  }
+};
+
+// ── Color: velocity direction → HSL → RGB ────────────────────────────────────
+function hsl2rgb(h, s, l){
+  const c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h*6)%2-1)), m=l-c/2;
+  let r=0,g=0,b=0;
+  const sec=h*6|0;
+  if(sec===0){r=c;g=x;}       else if(sec===1){r=x;g=c;}
+  else if(sec===2){g=c;b=x;}  else if(sec===3){g=x;b=c;}
+  else if(sec===4){r=x;b=c;}  else{r=c;b=x;}
+  return [r+m, g+m, b+m];
+}
+function velColor(vx, vy, vz){
+  const sp = Math.hypot(vx,vy,vz) || 1;
+  const hue = ((Math.atan2(vz,vx)/(2*Math.PI))+1)%1;
+  const elev = vy/sp; // -1..1
+  const sat = 0.80, lit = 0.42+0.14*elev;
+  return hsl2rgb(hue, sat, lit);
+}
+
+// ── Sphere geometry (UV sphere) ───────────────────────────────────────────────
+function buildSphere(stacks, slices){
+  const pos=[], norm=[], idx=[];
+  for(let i=0;i<=stacks;i++){
+    const phi=i*Math.PI/stacks, sp=Math.sin(phi), cp=Math.cos(phi);
+    for(let j=0;j<=slices;j++){
+      const th=j*2*Math.PI/slices, st=Math.sin(th), ct=Math.cos(th);
+      const x=ct*sp, y=cp, z=st*sp;
+      pos.push(x,y,z); norm.push(x,y,z);
+    }
+  }
+  for(let i=0;i<stacks;i++){
+    for(let j=0;j<slices;j++){
+      const a=i*(slices+1)+j, b=a+slices+1;
+      idx.push(a,b,a+1, b,b+1,a+1);
+    }
+  }
+  return { pos:new Float32Array(pos), norm:new Float32Array(norm), idx:new Uint16Array(idx), count:idx.length };
+}
+
+// ── Spatial hash grid ─────────────────────────────────────────────────────────
+class Grid {
+  constructor(cell){ this.cell=cell; this.map=new Map(); }
+  key(x,y,z){
+    const cx=Math.floor(x/this.cell), cy=Math.floor(y/this.cell), cz=Math.floor(z/this.cell);
+    return `${cx},${cy},${cz}`;
+  }
+  build(boids, n){
+    this.map.clear();
+    for(let i=0;i<n;i++){
+      const b=boids[i], k=this.key(b.x,b.y,b.z);
+      if(!this.map.has(k)) this.map.set(k,[]);
+      this.map.get(k).push(i);
+    }
+  }
+  query(x,y,z,radius,boids,out){
+    out.length=0;
+    const r=Math.ceil(radius/this.cell)+1;
+    const cx=Math.floor(x/this.cell), cy=Math.floor(y/this.cell), cz=Math.floor(z/this.cell);
+    const r2=radius*radius;
+    for(let dx=-r;dx<=r;dx++) for(let dy=-r;dy<=r;dy++) for(let dz=-r;dz<=r;dz++){
+      const cell=this.map.get(`${cx+dx},${cy+dy},${cz+dz}`);
+      if(!cell) continue;
+      for(const j of cell){
+        const b=boids[j];
+        if((b.x-x)**2+(b.y-y)**2+(b.z-z)**2<r2) out.push(j);
+      }
+    }
+  }
+}
+
+// ── Boid simulation ───────────────────────────────────────────────────────────
+const WORLD      = 52;   // half-extent of the toroidal space
+const BOID_SCL   = 0.85; // sphere radius
+const VIS_R      = 22;   // visibility / alignment+cohesion radius
+const BASE_MIN   = 8;    // minimum speed
+const BASE_MAX   = 20;   // maximum speed
+const MAX_BOIDS  = 400;
+
+const params = {
+  sep: 1.5, ali: 1.0, coh: 0.8,
+  speedMult: 1.0, n: 200, sepR: 7.0,
+  showLines: true, showBox: true
+};
+
+let paused = false;
+
+const boids = [];
+for(let i=0;i<MAX_BOIDS;i++) boids.push({x:0,y:0,z:0,vx:0,vy:0,vz:0});
+
+const grid    = new Grid(VIS_R);
+const nbuf    = []; // reusable neighbor index array
+const accX    = new Float32Array(MAX_BOIDS);
+const accY    = new Float32Array(MAX_BOIDS);
+const accZ    = new Float32Array(MAX_BOIDS);
+
+function spawnBoid(b){
+  b.x=(Math.random()-0.5)*WORLD*1.7;
+  b.y=(Math.random()-0.5)*WORLD*1.7;
+  b.z=(Math.random()-0.5)*WORLD*1.7;
+  const sp=BASE_MIN+Math.random()*(BASE_MAX-BASE_MIN);
+  const phi=Math.acos(2*Math.random()-1);
+  const th=Math.random()*2*Math.PI;
+  b.vx=sp*Math.sin(phi)*Math.cos(th);
+  b.vy=sp*Math.cos(phi);
+  b.vz=sp*Math.sin(phi)*Math.sin(th);
+}
+for(const b of boids) spawnBoid(b);
+
+function stepBoids(dt){
+  const n=params.n, sm=params.speedMult;
+  const minSp=BASE_MIN*sm, maxSp=BASE_MAX*sm;
+  const sepr=params.sepR;
+
+  grid.build(boids, n);
+
+  for(let i=0;i<n;i++){
+    const bi=boids[i];
+    grid.query(bi.x,bi.y,bi.z,VIS_R,boids,nbuf);
+
+    let sepx=0,sepy=0,sepz=0,sepN=0;
+    let alix=0,aliy=0,aliz=0;
+    let cohx=0,cohy=0,cohz=0,visN=0;
+
+    for(const j of nbuf){
+      if(j===i) continue;
+      const bj=boids[j];
+      const dx=bi.x-bj.x, dy=bi.y-bj.y, dz=bi.z-bj.z;
+      const d=Math.hypot(dx,dy,dz);
+      if(d<sepr && d>0.001){ const inv=1/d; sepx+=dx*inv; sepy+=dy*inv; sepz+=dz*inv; sepN++; }
+      alix+=bj.vx; aliy+=bj.vy; aliz+=bj.vz;
+      cohx+=bj.x;  cohy+=bj.y;  cohz+=bj.z;
+      visN++;
+    }
+
+    let ax=0,ay=0,az=0;
+
+    // Separation
+    if(sepN>0){
+      ax+=sepx/sepN*params.sep;
+      ay+=sepy/sepN*params.sep;
+      az+=sepz/sepN*params.sep;
+    }
+    // Alignment — steer toward average heading
+    if(visN>0){
+      const tx=alix/visN, ty=aliy/visN, tz=aliz/visN;
+      const tl=Math.hypot(tx,ty,tz)||1;
+      ax+=(tx/tl*maxSp-bi.vx)*params.ali*0.10;
+      ay+=(ty/tl*maxSp-bi.vy)*params.ali*0.10;
+      az+=(tz/tl*maxSp-bi.vz)*params.ali*0.10;
+    }
+    // Cohesion — steer toward center of neighbours
+    if(visN>0){
+      const cx=cohx/visN-bi.x, cy=cohy/visN-bi.y, cz=cohz/visN-bi.z;
+      const cl=Math.hypot(cx,cy,cz)||1;
+      ax+=cx/cl*params.coh;
+      ay+=cy/cl*params.coh;
+      az+=cz/cl*params.coh;
+    }
+    // Soft boundary — smooth repulsion beyond WORLD
+    const margin=8, bd=WORLD-margin;
+    const px=Math.abs(bi.x)-bd, py=Math.abs(bi.y)-bd, pz=Math.abs(bi.z)-bd;
+    if(px>0) ax-=Math.sign(bi.x)*px*2.0;
+    if(py>0) ay-=Math.sign(bi.y)*py*2.0;
+    if(pz>0) az-=Math.sign(bi.z)*pz*2.0;
+
+    accX[i]=ax; accY[i]=ay; accZ[i]=az;
+  }
+
+  for(let i=0;i<n;i++){
+    const b=boids[i];
+    b.vx+=accX[i]*dt; b.vy+=accY[i]*dt; b.vz+=accZ[i]*dt;
+    const sp=Math.hypot(b.vx,b.vy,b.vz);
+    if(sp>maxSp){ const s=maxSp/sp; b.vx*=s; b.vy*=s; b.vz*=s; }
+    else if(sp<minSp&&sp>0.001){ const s=minSp/sp; b.vx*=s; b.vy*=s; b.vz*=s; }
+    b.x+=b.vx*dt; b.y+=b.vy*dt; b.z+=b.vz*dt;
+  }
+}
+
+// ── WebGL resources ───────────────────────────────────────────────────────────
+const boidProg = mkProg(BOID_VS, BOID_FS);
+const lineProg = mkProg(LINE_VS, LINE_FS);
+const sphere   = buildSphere(13, 22);
+
+// Boid VAO
+const boidVAO = gl.createVertexArray();
+gl.bindVertexArray(boidVAO);
+
+const posBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+gl.bufferData(gl.ARRAY_BUFFER, sphere.pos, gl.STATIC_DRAW);
+const aPosB = gl.getAttribLocation(boidProg,'aPos');
+gl.enableVertexAttribArray(aPosB);
+gl.vertexAttribPointer(aPosB,3,gl.FLOAT,false,0,0);
+
+const normBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, normBuf);
+gl.bufferData(gl.ARRAY_BUFFER, sphere.norm, gl.STATIC_DRAW);
+const aNormB = gl.getAttribLocation(boidProg,'aNorm');
+gl.enableVertexAttribArray(aNormB);
+gl.vertexAttribPointer(aNormB,3,gl.FLOAT,false,0,0);
+
+const idxBuf = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, sphere.idx, gl.STATIC_DRAW);
+
+// Instance buffer: [x,y,z, r,g,b, scale] × MAX_BOIDS
+const ISTRIDE = 7*4;
+const instArr = new Float32Array(MAX_BOIDS*7);
+const instBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+gl.bufferData(gl.ARRAY_BUFFER, instArr, gl.DYNAMIC_DRAW);
+
+const aOff = gl.getAttribLocation(boidProg,'iOff');
+gl.enableVertexAttribArray(aOff);
+gl.vertexAttribPointer(aOff,3,gl.FLOAT,false,ISTRIDE,0);
+gl.vertexAttribDivisor(aOff,1);
+
+const aCol = gl.getAttribLocation(boidProg,'iCol');
+gl.enableVertexAttribArray(aCol);
+gl.vertexAttribPointer(aCol,3,gl.FLOAT,false,ISTRIDE,12);
+gl.vertexAttribDivisor(aCol,1);
+
+const aScl = gl.getAttribLocation(boidProg,'iScl');
+gl.enableVertexAttribArray(aScl);
+gl.vertexAttribPointer(aScl,1,gl.FLOAT,false,ISTRIDE,24);
+gl.vertexAttribDivisor(aScl,1);
+
+gl.bindVertexArray(null);
+
+// Line VAO — dynamic (neighbour connections + box)
+const MAX_LINES = 6000;
+const lineArr   = new Float32Array(MAX_LINES*6); // 2 pts × 3 floats
+const lineVAO   = gl.createVertexArray();
+gl.bindVertexArray(lineVAO);
+const lineBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, lineBuf);
+gl.bufferData(gl.ARRAY_BUFFER, lineArr, gl.DYNAMIC_DRAW);
+const aPosL = gl.getAttribLocation(lineProg,'aPos');
+gl.enableVertexAttribArray(aPosL);
+gl.vertexAttribPointer(aPosL,3,gl.FLOAT,false,0,0);
+gl.bindVertexArray(null);
+
+// Box static line VAO
+const W = WORLD;
+const boxVerts = new Float32Array([
+  -W,-W,-W,  W,-W,-W,   W,-W,-W,  W,-W, W,   W,-W, W,  -W,-W, W,  -W,-W, W,  -W,-W,-W,
+  -W, W,-W,  W, W,-W,   W, W,-W,  W, W, W,   W, W, W,  -W, W, W,  -W, W, W,  -W, W,-W,
+  -W,-W,-W,  -W, W,-W,  W,-W,-W,  W, W,-W,   W,-W, W,  W, W, W,   -W,-W, W,  -W, W, W
+]);
+const boxVAO = gl.createVertexArray();
+gl.bindVertexArray(boxVAO);
+const boxBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, boxBuf);
+gl.bufferData(gl.ARRAY_BUFFER, boxVerts, gl.STATIC_DRAW);
+const aPosBox = gl.getAttribLocation(lineProg,'aPos');
+gl.enableVertexAttribArray(aPosBox);
+gl.vertexAttribPointer(aPosBox,3,gl.FLOAT,false,0,0);
+gl.bindVertexArray(null);
+
+// Uniform locations
+const uVP_b  = gl.getUniformLocation(boidProg,'uVP');
+const uCam_b = gl.getUniformLocation(boidProg,'uCam');
+const uVP_l  = gl.getUniformLocation(lineProg,'uVP');
+const uCol_l = gl.getUniformLocation(lineProg,'uColor');
+
+// ── Camera (orbit) ────────────────────────────────────────────────────────────
+const cam = { r:150, theta:0.5, phi:1.1, autoSpin:true };
+let dragging=false, lastMX=0, lastMY=0, lastInteract=0;
+
+canvas.addEventListener('mousedown', e=>{ dragging=true; lastMX=e.clientX; lastMY=e.clientY; canvas.classList.add('dragging'); });
+window.addEventListener('mouseup', ()=>{ dragging=false; canvas.classList.remove('dragging'); });
+window.addEventListener('mousemove', e=>{
+  if(!dragging) return;
+  cam.theta += (e.clientX-lastMX)*0.007;
+  cam.phi    = Math.max(0.06, Math.min(Math.PI-0.06, cam.phi+(e.clientY-lastMY)*0.007));
+  lastMX=e.clientX; lastMY=e.clientY;
+  lastInteract=performance.now(); cam.autoSpin=false;
+});
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  cam.r=Math.max(30,Math.min(280,cam.r+e.deltaY*0.3));
+  lastInteract=performance.now();
+},{passive:false});
+// Touch
+let lastT=null;
+canvas.addEventListener('touchstart', e=>{ e.preventDefault(); lastT=e.touches[0]; },{passive:false});
+canvas.addEventListener('touchmove', e=>{
+  e.preventDefault();
+  const t=e.touches[0];
+  cam.theta += (t.clientX-lastT.clientX)*0.007;
+  cam.phi    = Math.max(0.06, Math.min(Math.PI-0.06, cam.phi+(t.clientY-lastT.clientY)*0.007));
+  lastT=t; lastInteract=performance.now(); cam.autoSpin=false;
+},{passive:false});
+
+function camVP(){
+  const ex=cam.r*Math.sin(cam.phi)*Math.cos(cam.theta);
+  const ey=cam.r*Math.cos(cam.phi);
+  const ez=cam.r*Math.sin(cam.phi)*Math.sin(cam.theta);
+  const view=M.lookAt(ex,ey,ez,0,0,0);
+  const proj=M.perspective(Math.PI/4.2, canvas.width/canvas.height, 0.5, 700);
+  return { vp:M.mul(proj,view), eye:[ex,ey,ez] };
+}
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+function resize(){
+  canvas.width  = window.innerWidth  * devicePixelRatio;
+  canvas.height = window.innerHeight * devicePixelRatio;
+  gl.viewport(0,0,canvas.width,canvas.height);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── FPS counter ───────────────────────────────────────────────────────────────
+let lastTs=0, fCount=0, fTimer=0;
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+function frame(ts){
+  requestAnimationFrame(frame);
+  const dt=Math.min((ts-lastTs)*0.001, 0.05);
+  lastTs=ts;
+  fCount++; fTimer+=dt;
+  if(fTimer>=0.5){
+    document.getElementById('v-fps').textContent=Math.round(fCount/fTimer);
+    fCount=0; fTimer=0;
+  }
+
+  // Auto-spin resumes after 5 s idle
+  if(!cam.autoSpin && performance.now()-lastInteract>5000) cam.autoSpin=true;
+  if(cam.autoSpin) cam.theta+=dt*0.10;
+
+  if(!paused) stepBoids(dt);
+
+  const n=params.n;
+
+  // Pack instance data
+  for(let i=0;i<n;i++){
+    const b=boids[i];
+    const [r,g,bl]=velColor(b.vx,b.vy,b.vz);
+    const base=i*7;
+    instArr[base  ]=b.x; instArr[base+1]=b.y; instArr[base+2]=b.z;
+    instArr[base+3]=r;   instArr[base+4]=g;   instArr[base+5]=bl;
+    instArr[base+6]=BOID_SCL;
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, instArr, 0, n*7);
+
+  const {vp, eye} = camVP();
+
+  // Clear
+  gl.clearColor(0.018,0.018,0.075,1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthFunc(gl.LEQUAL);
+
+  // ── Draw boids (instanced spheres) ──
+  gl.useProgram(boidProg);
+  gl.uniformMatrix4fv(uVP_b, false, vp);
+  gl.uniform3fv(uCam_b, eye);
+  gl.bindVertexArray(boidVAO);
+  gl.drawElementsInstanced(gl.TRIANGLES, sphere.count, gl.UNSIGNED_SHORT, 0, n);
+  gl.bindVertexArray(null);
+
+  // ── Lines (neighbour connections + boundary box) ──
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.depthMask(false);
+  gl.useProgram(lineProg);
+  gl.uniformMatrix4fv(uVP_l, false, vp);
+
+  // Boundary box
+  if(params.showBox){
+    gl.bindVertexArray(boxVAO);
+    gl.uniform4f(uCol_l, 0.3, 0.45, 0.8, 0.18);
+    gl.drawArrays(gl.LINES, 0, boxVerts.length/3);
+    gl.bindVertexArray(null);
+  }
+
+  // Neighbour connection lines
+  let lc=0;
+  if(params.showLines){
+    const LINE_D2=(VIS_R*0.65)**2;
+    outer:
+    for(let i=0;i<n;i++){
+      const a=boids[i];
+      for(let j=i+1;j<n;j++){
+        const b=boids[j];
+        const d2=(a.x-b.x)**2+(a.y-b.y)**2+(a.z-b.z)**2;
+        if(d2<LINE_D2){
+          const base=lc*6;
+          lineArr[base  ]=a.x; lineArr[base+1]=a.y; lineArr[base+2]=a.z;
+          lineArr[base+3]=b.x; lineArr[base+4]=b.y; lineArr[base+5]=b.z;
+          if(++lc>=MAX_LINES) break outer;
+        }
+      }
+    }
+    if(lc>0){
+      gl.bindBuffer(gl.ARRAY_BUFFER, lineBuf);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, lineArr, 0, lc*6);
+      gl.bindVertexArray(lineVAO);
+      gl.uniform4f(uCol_l, 0.7, 0.85, 1.0, 0.09);
+      gl.drawArrays(gl.LINES, 0, lc*2);
+      gl.bindVertexArray(null);
+    }
+  }
+
+  gl.depthMask(true);
+  gl.disable(gl.BLEND);
+
+  document.getElementById('v-lc').textContent=lc;
+}
+
+// ── UI bindings ───────────────────────────────────────────────────────────────
+function bindSlider(sid, vid, key, fmt){
+  const sl=document.getElementById(sid), vl=document.getElementById(vid);
+  sl.addEventListener('input',()=>{ params[key]=parseFloat(sl.value); vl.textContent=fmt(params[key]); });
+}
+
+bindSlider('s-sep','v-sep','sep', v=>v.toFixed(1));
+bindSlider('s-ali','v-ali','ali', v=>v.toFixed(1));
+bindSlider('s-coh','v-coh','coh', v=>v.toFixed(1));
+bindSlider('s-spd','v-spd','speedMult', v=>v.toFixed(1)+'×');
+bindSlider('s-sr', 'v-sr', 'sepR',  v=>v.toFixed(1));
+
+document.getElementById('s-cnt').addEventListener('input', function(){
+  params.n=parseInt(this.value);
+  document.getElementById('v-cnt').textContent=params.n;
+  document.getElementById('v-n').textContent=params.n;
+});
+
+document.getElementById('btn-lines').addEventListener('click', function(){
+  params.showLines=!params.showLines;
+  this.classList.toggle('active',params.showLines);
+});
+document.getElementById('btn-box').addEventListener('click', function(){
+  params.showBox=!params.showBox;
+  this.classList.toggle('active',params.showBox);
+});
+document.getElementById('btn-pause').addEventListener('click', function(){
+  paused=!paused;
+  this.textContent=paused?'Resume':'Pause';
+  this.classList.toggle('active',paused);
+});
+document.getElementById('btn-reset').addEventListener('click', ()=>{
+  for(const b of boids) spawnBoid(b);
+});
+
+requestAnimationFrame(t=>{ lastTs=t; requestAnimationFrame(frame); });
+</script>
+</body>
+</html>
