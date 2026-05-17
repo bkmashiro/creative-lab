@@ -84,6 +84,7 @@
 | [060](demos/060-ant-colony.html) | Ant Colony | Canvas 2D, dual pheromone trails (to-home/to-food), emergent path optimization, interactive food placement |
 | [061](demos/061-genetic-algorithm.html) | Genetic Algorithm | Canvas 2D, (1+1)-ES evolution, 80 semi-transparent triangles per genome, 4 target images, real-time fitness graph + diff heatmap |
 | [062](demos/062-flocking-3d.html) | Flocking 3D | WebGL2, instanced sphere rendering, 3D Boids (separation/alignment/cohesion), velocity-hue colouring, spatial hash grid, orbit camera |
+| [063](demos/063-fireflies.html) | Fireflies | Canvas 2D, Kuramoto phase-coupled oscillators, spatial coupling, order parameter R, additive glow blending, forest night scene |
 
 *More coming every 2 days →*
 

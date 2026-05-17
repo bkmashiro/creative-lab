@@ -71,7 +71,7 @@
 - [x] 060 Ant Colony (pheromone trails, food seeking, canvas)
 - [x] 061 Genetic Algorithm (evolving shapes to match target, visualized)
 - [x] 062 Flocking 3D (Boids in 3D, WebGL spheres)
-- [ ] 063 Fireflies (phase-coupled oscillators, synchronization)
+- [x] 063 Fireflies (phase-coupled oscillators, synchronization)
 - [ ] 064 Predator-Prey (Lotka-Volterra, spatial grid, canvas)
 
 ### Interactive & Creative
