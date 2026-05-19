@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#064 Predator-Prey — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#060810;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#c8d4e8}
+canvas{display:block;position:fixed;top:0;left:0;width:100vw;height:100vh;cursor:crosshair}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(6,8,16,0.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(120,160,255,0.14);border-radius:12px;padding:14px 16px;min-width:256px;font-size:0.82rem}
+h1{font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase;color:#5a9fff;margin-bottom:8px}
+.info{color:#384060;font-size:0.73rem;margin-bottom:8px;line-height:1.45}
+.statrow{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;color:#384060;font-size:0.77rem}
+.statrow span{font-variant-numeric:tabular-nums;font-size:0.8rem}
+.prey-val{color:#38e870}
+.pred-val{color:#ff5030}
+.fps-val{color:#a0b8e0}
+.sep{height:1px;background:rgba(120,160,255,0.1);margin:8px 0}
+.row{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+.row label{width:118px;color:#7090c0;flex-shrink:0;font-size:0.78rem}
+.row input[type=range]{flex:1;accent-color:#4a80e0;cursor:pointer;height:3px}
+.val{width:40px;text-align:right;color:#4a80e0;font-size:0.74rem;font-variant-numeric:tabular-nums}
+.btn-row{display:flex;gap:4px;margin-top:9px;flex-wrap:wrap}
+button{flex:1;min-width:48px;background:rgba(74,128,224,0.08);border:1px solid rgba(74,128,224,0.2);color:#6090d0;border-radius:6px;padding:5px 3px;font-size:0.72rem;cursor:pointer;transition:background .15s,border-color .15s}
+button:hover{background:rgba(74,128,224,0.2);border-color:rgba(74,128,224,0.42)}
+button.active{background:rgba(74,128,224,0.28);border-color:rgba(74,128,224,0.55);color:#90c0ff}
+.legend{display:flex;gap:12px;margin-top:7px;font-size:0.72rem;color:#485870}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:middle;margin-right:4px}
+#gc{display:block;width:100%;height:62px;margin-top:9px;border-radius:6px;background:rgba(0,0,0,0.35);border:1px solid rgba(120,160,255,0.1)}
+#graph-lbl{font-size:0.65rem;color:#303850;margin-top:2px;text-align:center}
+#hint{position:fixed;bottom:14px;left:16px;color:rgba(100,150,220,0.28);font-size:0.68rem;pointer-events:none;line-height:1.9}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.2);font-size:0.7rem;z-index:10}
+footer a{color:rgba(255,255,255,0.26);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.6)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <h1>064 · Predator-Prey</h1>
+  <div class="info">Lotka-Volterra · spatial reaction-diffusion</div>
+  <div class="statrow">Prey (total)  <span class="prey-val" id="v-prey">—</span></div>
+  <div class="statrow">Predator (total) <span class="pred-val" id="v-pred">—</span></div>
+  <div class="statrow">FPS <span class="fps-val" id="v-fps">—</span></div>
+  <div class="sep"></div>
+  <div class="row"><label>Prey growth α</label>
+    <input type="range" id="s-r" min="0.05" max="1.2" value="0.5" step="0.01">
+    <span class="val" id="v-r">0.50</span></div>
+  <div class="row"><label>Attack rate β</label>
+    <input type="range" id="s-a" min="0.1" max="3.0" value="1.0" step="0.01">
+    <span class="val" id="v-a">1.00</span></div>
+  <div class="row"><label>Conversion ε</label>
+    <input type="range" id="s-e" min="0.05" max="1.0" value="0.5" step="0.01">
+    <span class="val" id="v-e">0.50</span></div>
+  <div class="row"><label>Pred death δ</label>
+    <input type="range" id="s-d" min="0.05" max="1.0" value="0.35" step="0.01">
+    <span class="val" id="v-d">0.35</span></div>
+  <div class="row"><label>Prey diffusion</label>
+    <input type="range" id="s-du" min="0.0" max="0.5" value="0.08" step="0.005">
+    <span class="val" id="v-du">0.08</span></div>
+  <div class="row"><label>Pred diffusion</label>
+    <input type="range" id="s-dv" min="0.0" max="1.0" value="0.50" step="0.01">
+    <span class="val" id="v-dv">0.50</span></div>
+  <div class="row"><label>Speed</label>
+    <input type="range" id="s-spd" min="1" max="20" value="6" step="1">
+    <span class="val" id="v-spd">6</span></div>
+  <div class="sep"></div>
+  <div class="legend">
+    <span><span class="dot" style="background:#38e870"></span>Prey</span>
+    <span><span class="dot" style="background:#ff5030"></span>Predator</span>
+    <span><span class="dot" style="background:#ffe060"></span>Coexist</span>
+  </div>
+  <canvas id="gc" width="224" height="62"></canvas>
+  <div id="graph-lbl">population over time</div>
+  <div class="btn-row">
+    <button id="btn-reset">Random</button>
+    <button id="btn-spiral">Spirals</button>
+    <button id="btn-chaos">Chaos</button>
+    <button id="btn-pause">Pause</button>
+  </div>
+  <div class="btn-row" style="margin-top:4px">
+    <button id="btn-draw-prey" class="active">Draw Prey</button>
+    <button id="btn-draw-pred">Draw Pred</button>
+    <button id="btn-erase">Erase</button>
+  </div>
+</div>
+<div id="hint">Left-drag to paint · scroll to change brush size</div>
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 064</footer>
+
+<script>
+'use strict';
+
+// ── Grid & canvas ─────────────────────────────────────────────────────────────
+const GW = 200, GH = 200;     // simulation grid
+let U = new Float32Array(GW * GH);   // prey
+let V = new Float32Array(GW * GH);   // predator
+let nU = new Float32Array(GW * GH);
+let nV = new Float32Array(GW * GH);
+
+const canvas  = document.getElementById('c');
+const ctx     = canvas.getContext('2d');
+const offcan  = document.createElement('canvas');
+offcan.width  = GW; offcan.height = GH;
+const offCtx  = offcan.getContext('2d');
+let imgData   = offCtx.createImageData(GW, GH);
+const px      = imgData.data;
+
+// ── Params ────────────────────────────────────────────────────────────────────
+const P = {
+  r:   0.50,   // prey growth rate
+  a:   1.00,   // attack/predation rate
+  e:   0.50,   // conversion efficiency
+  d:   0.35,   // predator death rate
+  Du:  0.08,   // prey diffusion
+  Dv:  0.50,   // predator diffusion
+  dt:  0.05,   // time step
+  steps: 6,    // sim steps per frame
+  K:   1.0     // carrying capacity
+};
+
+// ── Population history ────────────────────────────────────────────────────────
+const HIST = 300;
+const preyHist = new Float32Array(HIST);
+const predHist = new Float32Array(HIST);
+let histIdx = 0, histFull = false;
+
+// ── HSL→RGB ───────────────────────────────────────────────────────────────────
+function hue2rgb(p, q, t) {
+  if (t < 0) t += 1; if (t > 1) t -= 1;
+  if (t < 1/6) return p + (q - p) * 6 * t;
+  if (t < 0.5) return q;
+  if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+  return p;
+}
+function hsl(h360, s, l) {  // returns [r,g,b] 0-255
+  const h = h360 / 360;
+  if (s === 0) { const v = l * 255 | 0; return [v, v, v]; }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return [
+    hue2rgb(p, q, h + 1/3) * 255 | 0,
+    hue2rgb(p, q, h) * 255 | 0,
+    hue2rgb(p, q, h - 1/3) * 255 | 0
+  ];
+}
+
+// ── Initialise grid ───────────────────────────────────────────────────────────
+function equilibrium() {
+  const { r, a, e, d, K } = P;
+  const Ueq = d / (e * a);                          // prey eq
+  const Veq = r * (1 - Ueq / K) / a;                // pred eq
+  return [Math.max(0.01, Ueq), Math.max(0.001, Veq)];
+}
+
+function resetRandom() {
+  const [Ue, Ve] = equilibrium();
+  for (let i = 0; i < GW * GH; i++) {
+    U[i] = Math.max(0, Ue + (Math.random() - 0.5) * 0.3 * Ue);
+    V[i] = Math.max(0, Ve + (Math.random() - 0.5) * 0.5 * Ve);
+  }
+  clearHistory();
+}
+
+function resetSpiral() {
+  const [Ue, Ve] = equilibrium();
+  // fill with equilibrium + tiny noise
+  for (let i = 0; i < GW * GH; i++) {
+    U[i] = Ue * (1 + (Math.random() - 0.5) * 0.02);
+    V[i] = Ve * (1 + (Math.random() - 0.5) * 0.02);
+  }
+  // plant localized patches that seed spiral waves
+  const seeds = [
+    [GW * 0.25 | 0, GH * 0.5 | 0, 1.6, 0.3],
+    [GW * 0.65 | 0, GH * 0.3 | 0, 1.8, 0.2],
+    [GW * 0.55 | 0, GH * 0.72 | 0, 1.5, 0.4],
+  ];
+  for (const [cx, cy, um, vm] of seeds) {
+    for (let dy = -16; dy <= 16; dy++) {
+      for (let dx = -16; dx <= 16; dx++) {
+        if (dx * dx + dy * dy > 256) continue;
+        const ix = ((cx + dx) + GW) % GW;
+        const iy = ((cy + dy) + GH) % GH;
+        U[iy * GW + ix] = Ue * um;
+        V[iy * GW + ix] = Ve * vm;
+      }
+    }
+  }
+  clearHistory();
+}
+
+function resetChaos() {
+  // Far from equilibrium — predators sparse, prey everywhere
+  for (let i = 0; i < GW * GH; i++) {
+    U[i] = 0.8 + Math.random() * 0.2;
+    V[i] = Math.random() < 0.06 ? 0.1 + Math.random() * 0.2 : 0.0;
+  }
+  clearHistory();
+}
+
+function clearHistory() {
+  preyHist.fill(0); predHist.fill(0);
+  histIdx = 0; histFull = false;
+}
+
+// ── Simulation step ───────────────────────────────────────────────────────────
+function simStep() {
+  const { r, a, e, d, Du, Dv, dt, K } = P;
+  for (let y = 0; y < GH; y++) {
+    const yn = ((y - 1 + GH) % GH) * GW;
+    const yp = ((y + 1) % GH) * GW;
+    const yc = y * GW;
+    for (let x = 0; x < GW; x++) {
+      const xn = (x - 1 + GW) % GW;
+      const xp = (x + 1) % GW;
+      const i  = yc + x;
+      const u = U[i], v = V[i];
+      const lapU = U[yn + x] + U[yp + x] + U[yc + xn] + U[yc + xp] - 4 * u;
+      const lapV = V[yn + x] + V[yp + x] + V[yc + xn] + V[yc + xp] - 4 * v;
+      nU[i] = u + dt * (r * u * (1 - u / K) - a * u * v + Du * lapU);
+      nV[i] = v + dt * (e * a * u * v - d * v + Dv * lapV);
+      if (nU[i] < 0) nU[i] = 0;
+      if (nV[i] < 0) nV[i] = 0;
+      if (nU[i] > 3) nU[i] = 3;
+      if (nV[i] > 3) nV[i] = 3;
+    }
+  }
+  // swap
+  let tmp = U; U = nU; nU = tmp;
+  tmp = V; V = nV; nV = tmp;
+}
+
+// ── Render grid → ImageData ───────────────────────────────────────────────────
+function renderGrid() {
+  let sumU = 0, sumV = 0;
+  for (let i = 0, p = 0; i < GW * GH; i++, p += 4) {
+    const u = U[i], v = V[i];
+    sumU += u; sumV += v;
+
+    // Normalize: U equilibrium ~0.7, V equilibrium ~0.07 (for defaults)
+    const un = Math.min(1, u);           // prey 0-1 (K=1 cap)
+    const vn = Math.min(1, v * 4.5);    // pred scaled so ~0.22 → 1.0
+
+    const tot = un + vn;
+    if (tot < 0.025) {
+      px[p] = 6; px[p+1] = 8; px[p+2] = 14; px[p+3] = 255;
+      continue;
+    }
+
+    // hue: 135° (green) when all prey → 0° (red) when all pred
+    const predFrac = vn / tot;
+    const hue  = 135 * (1 - predFrac);
+    const sat  = 0.78 + 0.18 * Math.min(1, tot);
+    const lite = 0.06 + 0.50 * Math.min(1, tot * 1.2);
+
+    const [r8, g8, b8] = hsl(hue, sat, lite);
+    px[p] = r8; px[p+1] = g8; px[p+2] = b8; px[p+3] = 255;
+  }
+  return [sumU / (GW * GH), sumV / (GW * GH)];
+}
+
+// ── Draw frame ────────────────────────────────────────────────────────────────
+let paused = false;
+let lastTime = 0, fps = 0, fpsSmooth = 0;
+let stepCount = 0;
+
+function draw(ts) {
+  if (!paused) {
+    for (let s = 0; s < P.steps; s++) simStep();
+    stepCount++;
+  }
+
+  const [avgU, avgV] = renderGrid();
+  offCtx.putImageData(imgData, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(offcan, 0, 0, canvas.width, canvas.height);
+
+  // history
+  if (!paused) {
+    preyHist[histIdx] = avgU;
+    predHist[histIdx] = avgV;
+    histIdx = (histIdx + 1) % HIST;
+    if (histIdx === 0) histFull = true;
+  }
+
+  // FPS
+  if (lastTime) {
+    const dt2 = (ts - lastTime) * 0.001;
+    fps = 1 / dt2;
+    fpsSmooth = fpsSmooth * 0.88 + fps * 0.12;
+  }
+  lastTime = ts;
+
+  updateStats(avgU, avgV);
+  drawGraph();
+  requestAnimationFrame(draw);
+}
+
+// ── Stats panel ───────────────────────────────────────────────────────────────
+function updateStats(avgU, avgV) {
+  document.getElementById('v-fps').textContent  = fpsSmooth.toFixed(1);
+  document.getElementById('v-prey').textContent = (avgU * GW * GH).toFixed(0);
+  document.getElementById('v-pred').textContent = (avgV * GW * GH).toFixed(0);
+}
+
+// ── Mini population graph ─────────────────────────────────────────────────────
+const gc  = document.getElementById('gc');
+const gct = gc.getContext('2d');
+
+function drawGraph() {
+  const gw = gc.width, gh = gc.height;
+  gct.clearRect(0, 0, gw, gh);
+  gct.fillStyle = 'rgba(0,0,0,0.3)';
+  gct.fillRect(0, 0, gw, gh);
+
+  const len = histFull ? HIST : histIdx;
+  if (len < 2) return;
+
+  // find range for both
+  let uMax = 0, vMax = 0;
+  for (let i = 0; i < len; i++) {
+    const hi = histFull ? (histIdx + i) % HIST : i;
+    if (preyHist[hi] > uMax) uMax = preyHist[hi];
+    if (predHist[hi] > vMax) vMax = predHist[hi];
+  }
+  if (uMax < 1e-6) uMax = 1;
+  if (vMax < 1e-6) vMax = 1;
+  const uScale = uMax * 1.1, vScale = vMax * 1.1;
+
+  function drawLine(hist, scale, color) {
+    gct.beginPath();
+    gct.strokeStyle = color;
+    gct.lineWidth = 1.5;
+    for (let i = 0; i < len; i++) {
+      const hi = histFull ? (histIdx + i) % HIST : i;
+      const x = (i / (len - 1)) * gw;
+      const y = gh - (hist[hi] / scale) * (gh - 4) - 2;
+      i === 0 ? gct.moveTo(x, y) : gct.lineTo(x, y);
+    }
+    gct.stroke();
+  }
+
+  drawLine(preyHist, uScale, 'rgba(56,232,112,0.85)');
+  drawLine(predHist, vScale, 'rgba(255,80,48,0.85)');
+}
+
+// ── Mouse interaction ─────────────────────────────────────────────────────────
+let drawMode = 'prey';   // 'prey' | 'pred' | 'erase'
+let brushR = 10;
+let mouseDown = false;
+let mouseGX = 0, mouseGY = 0;
+
+function canvasToGrid(cx, cy) {
+  return [
+    Math.floor(cx / canvas.width  * GW),
+    Math.floor(cy / canvas.height * GH)
+  ];
+}
+
+function paint(gx, gy) {
+  const [Ue, Ve] = equilibrium();
+  for (let dy = -brushR; dy <= brushR; dy++) {
+    for (let dx = -brushR; dx <= brushR; dx++) {
+      if (dx*dx + dy*dy > brushR*brushR) continue;
+      const ix = ((gx + dx) + GW) % GW;
+      const iy = ((gy + dy) + GH) % GH;
+      const i = iy * GW + ix;
+      const falloff = 1 - Math.sqrt(dx*dx + dy*dy) / brushR;
+      if (drawMode === 'prey') {
+        U[i] = Math.min(P.K, U[i] + falloff * Ue * 1.5);
+      } else if (drawMode === 'pred') {
+        V[i] = Math.min(1.5, V[i] + falloff * Ve * 3.0);
+      } else {
+        U[i] *= (1 - falloff * 0.6);
+        V[i] *= (1 - falloff * 0.6);
+      }
+    }
+  }
+}
+
+canvas.addEventListener('mousedown', e => {
+  mouseDown = true;
+  const [gx, gy] = canvasToGrid(e.clientX, e.clientY);
+  mouseGX = gx; mouseGY = gy;
+  paint(gx, gy);
+  e.preventDefault();
+});
+canvas.addEventListener('mousemove', e => {
+  if (!mouseDown) return;
+  const [gx, gy] = canvasToGrid(e.clientX, e.clientY);
+  mouseGX = gx; mouseGY = gy;
+  paint(gx, gy);
+});
+canvas.addEventListener('mouseup', () => mouseDown = false);
+canvas.addEventListener('mouseleave', () => mouseDown = false);
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+canvas.addEventListener('wheel', e => {
+  brushR = Math.max(2, Math.min(40, brushR - Math.sign(e.deltaY) * 2));
+  e.preventDefault();
+}, { passive: false });
+
+// ── Touch support ─────────────────────────────────────────────────────────────
+canvas.addEventListener('touchstart', e => {
+  mouseDown = true;
+  const t = e.touches[0];
+  const [gx, gy] = canvasToGrid(t.clientX, t.clientY);
+  paint(gx, gy);
+  e.preventDefault();
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  if (!mouseDown) return;
+  const t = e.touches[0];
+  const [gx, gy] = canvasToGrid(t.clientX, t.clientY);
+  paint(gx, gy);
+  e.preventDefault();
+}, { passive: false });
+canvas.addEventListener('touchend', () => mouseDown = false);
+
+// ── Sliders ───────────────────────────────────────────────────────────────────
+function bindSlider(id, key, fmt) {
+  const el = document.getElementById(id);
+  const vl = document.getElementById(id.replace('s-', 'v-'));
+  el.addEventListener('input', () => {
+    P[key] = parseFloat(el.value);
+    vl.textContent = fmt ? fmt(el.value) : parseFloat(el.value).toFixed(2);
+  });
+}
+bindSlider('s-r',   'r');
+bindSlider('s-a',   'a');
+bindSlider('s-e',   'e');
+bindSlider('s-d',   'd');
+bindSlider('s-du',  'Du');
+bindSlider('s-dv',  'Dv');
+document.getElementById('s-spd').addEventListener('input', function() {
+  P.steps = parseInt(this.value);
+  document.getElementById('v-spd').textContent = this.value;
+});
+
+// ── Buttons ───────────────────────────────────────────────────────────────────
+document.getElementById('btn-reset').addEventListener('click', resetRandom);
+document.getElementById('btn-spiral').addEventListener('click', resetSpiral);
+document.getElementById('btn-chaos').addEventListener('click', resetChaos);
+document.getElementById('btn-pause').addEventListener('click', function() {
+  paused = !paused;
+  this.textContent = paused ? 'Resume' : 'Pause';
+  this.classList.toggle('active', paused);
+});
+
+const drawBtns = ['btn-draw-prey','btn-draw-pred','btn-erase'];
+const drawModes = ['prey','pred','erase'];
+drawBtns.forEach((id, i) => {
+  document.getElementById(id).addEventListener('click', function() {
+    drawMode = drawModes[i];
+    drawBtns.forEach(bid => document.getElementById(bid).classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  gc.width = gc.clientWidth;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+resetSpiral();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

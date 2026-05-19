@@ -72,7 +72,7 @@
 - [x] 061 Genetic Algorithm (evolving shapes to match target, visualized)
 - [x] 062 Flocking 3D (Boids in 3D, WebGL spheres)
 - [x] 063 Fireflies (phase-coupled oscillators, synchronization)
-- [ ] 064 Predator-Prey (Lotka-Volterra, spatial grid, canvas)
+- [x] 064 Predator-Prey (Lotka-Volterra, spatial grid, canvas)
 
 ### Interactive & Creative
 - [ ] 065 Voronoi Stippling (image → dot art, D3-inspired, canvas)
