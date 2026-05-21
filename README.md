@@ -86,6 +86,7 @@
 | [062](demos/062-flocking-3d.html) | Flocking 3D | WebGL2, instanced sphere rendering, 3D Boids (separation/alignment/cohesion), velocity-hue colouring, spatial hash grid, orbit camera |
 | [063](demos/063-fireflies.html) | Fireflies | Canvas 2D, Kuramoto phase-coupled oscillators, spatial coupling, order parameter R, additive glow blending, forest night scene |
 | [064](demos/064-predator-prey.html) | Predator-Prey | Canvas 2D, Lotka-Volterra reaction-diffusion on spatial grid, HSL color mapping, population time-series graph, mouse painting |
+| [065](demos/065-voronoi-stippling.html) | Voronoi Stippling | Canvas 2D, Lloyd's relaxation on weighted Voronoi cells, importance-sampled initial placement, adaptive dot sizing, 4 procedural presets + custom image upload |
 
 *More coming every 2 days →*
 
