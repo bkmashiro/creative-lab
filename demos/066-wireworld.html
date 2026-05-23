@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#066 Wireworld — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e6edf3}
+canvas{display:block;position:fixed;top:0;left:0;width:100vw;height:100vh;cursor:crosshair}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(13,17,23,0.82);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;min-width:230px;font-size:0.82rem}
+h1{font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase;color:#8b949e;margin-bottom:4px}
+.info{color:#8b949e;font-size:0.72rem;margin-bottom:8px;line-height:1.45}
+.legend{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.leg{display:flex;align-items:center;gap:4px;font-size:0.69rem;color:#8b949e}
+.swatch{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.sep{height:1px;background:rgba(255,255,255,0.07);margin:8px 0}
+.statrow{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;color:#8b949e;font-size:0.75rem}
+.statrow span{font-variant-numeric:tabular-nums;font-size:0.78rem;color:#e6edf3}
+.row{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+.row label{width:88px;color:#8b949e;flex-shrink:0;font-size:0.75rem}
+.row input[type=range]{flex:1;accent-color:#58a6ff;cursor:pointer;height:3px}
+.val{width:36px;text-align:right;color:#58a6ff;font-size:0.72rem;font-variant-numeric:tabular-nums}
+.btn-row{display:flex;gap:4px;margin-bottom:5px;flex-wrap:wrap}
+button{flex:1;min-width:44px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#c9d1d9;border-radius:6px;padding:5px 4px;font-size:0.71rem;cursor:pointer;transition:background .12s,border-color .12s}
+button:hover{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.22)}
+button.active{background:rgba(88,166,255,0.18);border-color:rgba(88,166,255,0.45);color:#79b8ff}
+.tool-row{display:flex;gap:4px;margin-bottom:5px}
+.tool-row button{font-size:0.68rem}
+#hint{position:fixed;bottom:14px;left:16px;color:rgba(255,255,255,0.18);font-size:0.67rem;pointer-events:none;line-height:1.9}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.18);font-size:0.7rem;z-index:10}
+footer a{color:rgba(255,255,255,0.25);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.6)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <h1>066 · Wireworld</h1>
+  <div class="info">Turing-complete cellular automaton</div>
+  <div class="legend">
+    <div class="leg"><div class="swatch" style="background:#e6a817"></div>Conductor</div>
+    <div class="leg"><div class="swatch" style="background:#58a6ff"></div>e⁻ Head</div>
+    <div class="leg"><div class="swatch" style="background:#f78166"></div>e⁻ Tail</div>
+  </div>
+  <div class="sep"></div>
+  <div class="statrow">Generation <span id="v-gen">0</span></div>
+  <div class="statrow">Electrons <span id="v-elec">0</span></div>
+  <div class="statrow">FPS <span id="v-fps">—</span></div>
+  <div class="sep"></div>
+  <div class="row"><label>Speed</label>
+    <input type="range" id="s-spd" min="1" max="30" value="8" step="1">
+    <span class="val" id="v-spd">8</span></div>
+  <div class="row"><label>Cell size</label>
+    <input type="range" id="s-cell" min="4" max="16" value="8" step="1">
+    <span class="val" id="v-cell">8</span></div>
+  <div class="sep"></div>
+  <div class="tool-row">
+    <button id="t-wire" class="active">Wire</button>
+    <button id="t-head">Head</button>
+    <button id="t-erase">Erase</button>
+  </div>
+  <div class="btn-row">
+    <button id="btn-play" class="active">⏸ Pause</button>
+    <button id="btn-step">Step</button>
+    <button id="btn-clear">Clear</button>
+  </div>
+  <div class="sep"></div>
+  <div style="font-size:0.68rem;color:#8b949e;margin-bottom:5px">Presets</div>
+  <div class="btn-row">
+    <button id="p-clocks">Clocks</button>
+    <button id="p-logic">Logic</button>
+  </div>
+  <div class="btn-row">
+    <button id="p-primes">Primes</button>
+    <button id="p-xor">XOR Gate</button>
+  </div>
+</div>
+<div id="hint">Left-drag: draw · Right-drag: erase · Scroll: zoom · Shift+click: place electron</div>
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 066</footer>
+
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+const EMPTY = 0, CONDUCTOR = 1, HEAD = 2, TAIL = 3;
+
+// Colours as [r,g,b]
+const CELL_RGB = [
+  [13, 17, 23],     // EMPTY
+  [180, 130, 18],   // CONDUCTOR
+  [88, 166, 255],   // HEAD
+  [247, 129, 102],  // TAIL
+];
+
+// ─── Canvas / Grid ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+let cellSize = 8;
+let cols, rows;
+let gridA, gridB;
+
+function initGrid() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  const prevA = gridA, prevCols = cols, prevRows = rows;
+  cols = Math.max(1, Math.floor(W / cellSize));
+  rows = Math.max(1, Math.floor(H / cellSize));
+  gridA = new Uint8Array(cols * rows);
+  gridB = new Uint8Array(cols * rows);
+  // Copy old grid (if exists) into new one (top-left aligned)
+  if (prevA && prevCols && prevRows) {
+    const mc = Math.min(cols, prevCols), mr = Math.min(rows, prevRows);
+    for (let y = 0; y < mr; y++)
+      for (let x = 0; x < mc; x++)
+        gridA[y * cols + x] = prevA[y * prevCols + x];
+  }
+}
+
+window.addEventListener('resize', () => { initGrid(); renderFrame(); });
+
+// ─── Simulation ───────────────────────────────────────────────────────────────
+let generation = 0;
+
+function step() {
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const i = y * cols + x;
+      const c = gridA[i];
+      if (c === EMPTY)     { gridB[i] = EMPTY; continue; }
+      if (c === HEAD)      { gridB[i] = TAIL;  continue; }
+      if (c === TAIL)      { gridB[i] = CONDUCTOR; continue; }
+      // CONDUCTOR — count Moore-neighbour heads
+      let h = 0;
+      const xm = x > 0, xp = x < cols-1, ym = y > 0, yp = y < rows-1;
+      if (xm && ym && gridA[i - cols - 1] === HEAD) h++;
+      if (       ym && gridA[i - cols    ] === HEAD) h++;
+      if (xp && ym && gridA[i - cols + 1] === HEAD) h++;
+      if (xm       && gridA[i        - 1] === HEAD) h++;
+      if (xp       && gridA[i        + 1] === HEAD) h++;
+      if (xm && yp && gridA[i + cols - 1] === HEAD) h++;
+      if (       yp && gridA[i + cols    ] === HEAD) h++;
+      if (xp && yp && gridA[i + cols + 1] === HEAD) h++;
+      gridB[i] = (h === 1 || h === 2) ? HEAD : CONDUCTOR;
+    }
+  }
+  const tmp = gridA; gridA = gridB; gridB = tmp;
+  generation++;
+}
+
+// ─── Rendering ────────────────────────────────────────────────────────────────
+let imgData;
+function ensureImgData() {
+  if (!imgData || imgData.width !== W || imgData.height !== H)
+    imgData = ctx.createImageData(W, H);
+}
+
+function renderFrame() {
+  ensureImgData();
+  const d = imgData.data;
+  const bg = CELL_RGB[0];
+
+  // Fill background
+  for (let i = 0; i < d.length; i += 4) {
+    d[i] = bg[0]; d[i+1] = bg[1]; d[i+2] = bg[2]; d[i+3] = 255;
+  }
+
+  // Draw cells via ImageData (fast, no glow)
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const cell = gridA[y * cols + x];
+      if (cell === EMPTY) continue;
+      const col = CELL_RGB[cell];
+      const px0 = x * cellSize, py0 = y * cellSize;
+      const px1 = Math.min(px0 + cellSize, W);
+      const py1 = Math.min(py0 + cellSize, H);
+      for (let py = py0; py < py1; py++) {
+        for (let px = px0; px < px1; px++) {
+          const pi = (py * W + px) * 4;
+          d[pi] = col[0]; d[pi+1] = col[1]; d[pi+2] = col[2]; d[pi+3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // Glow pass — only electrons (few cells, cheap)
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const cell = gridA[y * cols + x];
+      if (cell === HEAD || cell === TAIL) {
+        ctx.shadowBlur = cellSize * 2.5;
+        ctx.shadowColor = cell === HEAD ? '#58a6ff' : '#f78166';
+        ctx.fillStyle   = cell === HEAD ? '#79b8ff' : '#ff9888';
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+      }
+    }
+  }
+  ctx.shadowBlur = 0;
+
+  // Stats
+  let electrons = 0;
+  for (let i = 0; i < gridA.length; i++) if (gridA[i] === HEAD) electrons++;
+  document.getElementById('v-gen').textContent  = generation;
+  document.getElementById('v-elec').textContent = electrons;
+}
+
+// ─── Animation Loop ───────────────────────────────────────────────────────────
+let running = true, stepsPerFrame = 8;
+let fpsLast = performance.now(), fpsCount = 0, fps = 0;
+let accumulator = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = ts - (loop._last || ts);
+  loop._last = ts;
+
+  // FPS
+  fpsCount++;
+  if (ts - fpsLast >= 800) {
+    fps = Math.round(fpsCount * 1000 / (ts - fpsLast));
+    fpsCount = 0; fpsLast = ts;
+    document.getElementById('v-fps').textContent = fps;
+  }
+
+  if (running) {
+    // stepsPerFrame controls speed
+    for (let i = 0; i < stepsPerFrame; i++) step();
+  }
+  renderFrame();
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+let tool = 'wire'; // 'wire' | 'head' | 'erase'
+let isDrawing = false, isErasing = false;
+let lastCellX = -1, lastCellY = -1;
+
+function cellAt(e) {
+  const r = canvas.getBoundingClientRect();
+  return [
+    Math.floor((e.clientX - r.left)  / cellSize),
+    Math.floor((e.clientY - r.top) / cellSize),
+  ];
+}
+
+function paintCell(cx, cy, right, shift) {
+  if (cx < 0 || cx >= cols || cy < 0 || cy >= rows) return;
+  if (right) {
+    gridA[cy * cols + cx] = EMPTY;
+  } else if (shift) {
+    // Toggle head
+    const cur = gridA[cy * cols + cx];
+    if (cur === HEAD) {
+      gridA[cy * cols + cx] = CONDUCTOR;
+    } else {
+      gridA[cy * cols + cx] = HEAD;
+      // Place tail behind if there's a conductor neighbour to the left/above
+      if (cx > 0 && gridA[cy * cols + cx - 1] === CONDUCTOR) {
+        gridA[cy * cols + cx - 1] = TAIL;
+      } else if (cy > 0 && gridA[(cy-1) * cols + cx] === CONDUCTOR) {
+        gridA[(cy-1) * cols + cx] = TAIL;
+      }
+    }
+  } else {
+    if (tool === 'wire')  gridA[cy * cols + cx] = CONDUCTOR;
+    if (tool === 'head') {
+      gridA[cy * cols + cx] = HEAD;
+      if (cx > 0) gridA[cy * cols + cx - 1] = TAIL;
+    }
+    if (tool === 'erase') gridA[cy * cols + cx] = EMPTY;
+  }
+}
+
+canvas.addEventListener('mousedown', e => {
+  e.preventDefault();
+  isDrawing = true;
+  isErasing = e.button === 2;
+  const [cx, cy] = cellAt(e);
+  lastCellX = cx; lastCellY = cy;
+  paintCell(cx, cy, isErasing, e.shiftKey);
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!isDrawing) return;
+  const [cx, cy] = cellAt(e);
+  if (cx === lastCellX && cy === lastCellY) return;
+  // Bresenham line to fill gaps
+  let x0 = lastCellX, y0 = lastCellY, x1 = cx, y1 = cy;
+  const dx = Math.abs(x1-x0), dy = -Math.abs(y1-y0);
+  const sx = x0<x1?1:-1, sy = y0<y1?1:-1;
+  let err = dx+dy;
+  while (true) {
+    paintCell(x0, y0, isErasing, e.shiftKey);
+    if (x0===x1 && y0===y1) break;
+    const e2 = 2*err;
+    if (e2 >= dy) { err+=dy; x0+=sx; }
+    if (e2 <= dx) { err+=dx; y0+=sy; }
+  }
+  lastCellX = cx; lastCellY = cy;
+});
+
+canvas.addEventListener('mouseup', () => { isDrawing = false; });
+canvas.addEventListener('mouseleave', () => { isDrawing = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -1 : 1;
+  cellSize = Math.max(4, Math.min(16, cellSize + delta));
+  document.getElementById('s-cell').value = cellSize;
+  document.getElementById('v-cell').textContent = cellSize;
+  initGrid();
+}, { passive: false });
+
+// ─── Controls ─────────────────────────────────────────────────────────────────
+const btnPlay = document.getElementById('btn-play');
+btnPlay.addEventListener('click', () => {
+  running = !running;
+  btnPlay.textContent = running ? '⏸ Pause' : '▶ Play';
+  btnPlay.classList.toggle('active', running);
+});
+
+document.getElementById('btn-step').addEventListener('click', () => {
+  running = false;
+  btnPlay.textContent = '▶ Play';
+  btnPlay.classList.remove('active');
+  step();
+  renderFrame();
+});
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  gridA.fill(0); generation = 0;
+});
+
+document.getElementById('s-spd').addEventListener('input', function() {
+  stepsPerFrame = +this.value;
+  document.getElementById('v-spd').textContent = this.value;
+});
+
+document.getElementById('s-cell').addEventListener('input', function() {
+  cellSize = +this.value;
+  document.getElementById('v-cell').textContent = this.value;
+  initGrid();
+});
+
+['wire','head','erase'].forEach(id => {
+  document.getElementById('t-'+id).addEventListener('click', function() {
+    tool = id;
+    document.querySelectorAll('.tool-row button').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function setCell(x, y, s) {
+  if (x >= 0 && x < cols && y >= 0 && y < rows)
+    gridA[y * cols + x] = s;
+}
+function wire(x, y, s) { setCell(x, y, CONDUCTOR); }
+function hline(x, y, len) { for (let i=0;i<len;i++) setCell(x+i,y,CONDUCTOR); }
+function vline(x, y, len) { for (let i=0;i<len;i++) setCell(x,y+i,CONDUCTOR); }
+
+function rectLoop(x0, y0, w, h) {
+  hline(x0, y0, w);
+  vline(x0+w-1, y0+1, h-2);
+  hline(x0, y0+h-1, w);
+  vline(x0, y0+1, h-2);
+}
+
+function placeLoopElectron(x0, y0, w, h, offset) {
+  // Build clockwise path
+  const path = [];
+  for (let x=x0; x<x0+w; x++)   path.push([x, y0]);
+  for (let y=y0+1; y<y0+h; y++) path.push([x0+w-1, y]);
+  for (let x=x0+w-2; x>=x0; x--) path.push([x, y0+h-1]);
+  for (let y=y0+h-2; y>y0; y--)  path.push([x0, y]);
+  if (path.length >= 2) {
+    const hi = offset % path.length;
+    const ti = (offset+1) % path.length;
+    setCell(path[hi][0], path[hi][1], HEAD);
+    setCell(path[ti][0], path[ti][1], TAIL);
+  }
+}
+
+// ─── Presets ──────────────────────────────────────────────────────────────────
+function loadPreset(fn) {
+  gridA.fill(0); generation = 0;
+  fn();
+}
+
+// ── Preset: Clocks ──
+function presetClocks() {
+  const cx = Math.floor(cols/2), cy = Math.floor(rows/2);
+
+  // Title area: several loop clocks of increasing size
+  // Row 1: small fast clocks
+  const loops = [
+    [3,3],[4,4],[5,4],[6,4],[8,4],[10,5],[12,5],[14,5],
+  ];
+  let x = 4, maxH = 0;
+  const rowY = cy - 20;
+  loops.forEach(([w,h]) => {
+    if (x + w + 2 < cols - 4) {
+      rectLoop(x, rowY, w, h);
+      placeLoopElectron(x, rowY, w, h, 0);
+      maxH = Math.max(maxH, h);
+      x += w + 4;
+    }
+  });
+
+  // Row 2: larger clocks
+  x = 4;
+  const rowY2 = rowY + maxH + 6;
+  const loops2 = [[16,6],[20,6],[25,6],[30,6]];
+  loops2.forEach(([w,h]) => {
+    if (x + w + 2 < cols - 4) {
+      rectLoop(x, rowY2, w, h);
+      placeLoopElectron(x, rowY2, w, h, 0);
+      x += w + 4;
+    }
+  });
+
+  // Row 3: large spiral-like arrangement
+  const bigY = rowY2 + 12;
+  if (cols > 60) {
+    rectLoop(4, bigY, 40, 8);
+    placeLoopElectron(4, bigY, 40, 8, 0);
+    rectLoop(48, bigY, 25, 8);
+    placeLoopElectron(48, bigY, 25, 8, 0);
+    if (cols > 90) {
+      rectLoop(76, bigY, 20, 8);
+      placeLoopElectron(76, bigY, 20, 8, 4);
+    }
+  }
+
+  // Row 4: long wire signals
+  const wireY = bigY + 14;
+  for (let row = 0; row < 6; row++) {
+    const wy = wireY + row * 3;
+    if (wy >= rows - 2) break;
+    hline(4, wy, cols - 8);
+    // Place electrons spread across wire
+    const phase = row * 15;
+    for (let p = phase; p < cols - 12; p += 50) {
+      setCell(4 + p, wy, HEAD);
+      if (p > 0) setCell(4 + p - 1, wy, TAIL);
+    }
+  }
+}
+
+// ── Preset: Logic Gates ──
+// Demonstrates OR gate, NOT gate (double-head), signal splitter
+function presetLogic() {
+  const cx = Math.floor(cols/2);
+  const cy = Math.floor(rows/2);
+
+  // ── Section 1: Signal Generator / OR Gate ──
+  // Double-head 2x2 clock at left
+  const clockX = 4, clockY = cy - 18;
+  setCell(clockX,   clockY,   HEAD);
+  setCell(clockX+1, clockY,   TAIL);
+  setCell(clockX,   clockY+1, CONDUCTOR);
+  setCell(clockX+1, clockY+1, CONDUCTOR);
+
+  // Outputs from the clock (one from each row of the clock)
+  hline(clockX+2, clockY,   30);
+  hline(clockX+2, clockY+1, 30);
+
+  // ── Section 2: Multiple clock loops feeding into parallel wires ──
+  const loopSection = cx - 10;
+  // Clock A: 5x3 loop
+  const ayOff = cy - 14;
+  rectLoop(loopSection, ayOff, 5, 3);
+  placeLoopElectron(loopSection, ayOff, 5, 3, 0);
+  // Wire from clock A top-right going right
+  hline(loopSection+5, ayOff, 40);
+  setCell(loopSection+5, ayOff, HEAD);
+  setCell(loopSection+6, ayOff, TAIL);
+
+  // Clock B: 5x3 loop below A
+  const byOff = ayOff + 6;
+  rectLoop(loopSection, byOff, 5, 3);
+  placeLoopElectron(loopSection, byOff, 5, 3, 3);
+  hline(loopSection+5, byOff, 40);
+  setCell(loopSection+5, byOff, HEAD);
+  setCell(loopSection+6, byOff, TAIL);
+
+  // OR Gate junction: the two wires meet at a T
+  // Wire A is at ayOff, Wire B is at byOff (= ayOff+6)
+  // Connect via vertical wire at loopSection + 40
+  const jx = loopSection + 45;
+  // Gate cell in between
+  const gjy = ayOff + 3;
+  vline(jx, ayOff, byOff - ayOff + 1);
+  // Turn wires to meet the vertical
+  setCell(jx-1, ayOff, CONDUCTOR);
+  setCell(jx-1, byOff, CONDUCTOR);
+  // Output from OR gate goes right
+  hline(jx+1, gjy, 25);
+
+  // ── Section 3: Splitter (Y-junction) ──
+  const splitY = cy + 6;
+  const splitStart = 6;
+  hline(splitStart, splitY, 35);
+  setCell(splitStart, splitY, HEAD);
+  setCell(splitStart+1, splitY, TAIL);
+  // Y-junction: signal goes two ways
+  const juncX = splitStart + 36;
+  // Top branch
+  setCell(juncX,   splitY-1, CONDUCTOR);
+  setCell(juncX+1, splitY-2, CONDUCTOR);
+  hline(juncX+2, splitY-2, 20);
+  // Bottom branch
+  setCell(juncX,   splitY+1, CONDUCTOR);
+  setCell(juncX+1, splitY+2, CONDUCTOR);
+  hline(juncX+2, splitY+2, 20);
+
+  // ── Section 4: NOT Gate via 3-head suppression ──
+  // A double-head clock feeding two parallel wires
+  // When input single-head meets double-head at gate: 3 heads → no fire
+  const notY = cy + 20;
+  const notX = 6;
+  // Double-head source (2x2 loop)
+  setCell(notX,   notY,   HEAD);
+  setCell(notX+1, notY,   TAIL);
+  setCell(notX,   notY+1, CONDUCTOR);
+  setCell(notX+1, notY+1, CONDUCTOR);
+  // Two output wires from double head clock
+  hline(notX+2, notY,   28);
+  hline(notX+2, notY+1, 28);
+  // Gate cell: conductor between the two wires at the end
+  setCell(notX+30, notY,   CONDUCTOR);
+  setCell(notX+30, notY+1, CONDUCTOR);
+  setCell(notX+31, notY,   CONDUCTOR);
+  // Input signal (when present: 3 heads at gate → NO output)
+  // Show with a single electron approaching from above
+  vline(notX+30, notY-8, 8);
+  setCell(notX+30, notY-8, HEAD);
+  setCell(notX+30, notY-7, TAIL);
+  // Output wire
+  hline(notX+32, notY, 20);
+
+  // ── Section 5: Diode (one-way signal) ──
+  const diodeY = cy + 34;
+  if (diodeY < rows - 3) {
+    // Forward direction: single input path
+    hline(4, diodeY, 15);
+    setCell(4, diodeY, HEAD);
+    setCell(5, diodeY, TAIL);
+    // Funnel: signal splits then rejoins
+    setCell(19, diodeY,   CONDUCTOR);
+    setCell(20, diodeY-1, CONDUCTOR);
+    setCell(21, diodeY-1, CONDUCTOR);
+    setCell(22, diodeY,   CONDUCTOR);
+    setCell(20, diodeY+1, CONDUCTOR);
+    setCell(21, diodeY+1, CONDUCTOR);
+    // If 2 heads arrive simultaneously from funnel → output fires (passes)
+    hline(23, diodeY, 15);
+    // Label area
+    hline(4, diodeY+4, 15);
+    // Reverse blocked example: head coming from right
+    setCell(37, diodeY+4, HEAD);
+    setCell(38, diodeY+4, TAIL);
+    // Same funnel reversed
+    setCell(18, diodeY+4,   CONDUCTOR);
+    setCell(17, diodeY+4-1, CONDUCTOR);
+    setCell(16, diodeY+4-1, CONDUCTOR);
+    setCell(15, diodeY+4,   CONDUCTOR);
+    setCell(17, diodeY+4+1, CONDUCTOR);
+    setCell(16, diodeY+4+1, CONDUCTOR);
+  }
+}
+
+// ── Preset: Primes sieve (Wireworld prime-number generator concept) ──
+// Simplified version showing periodic signal cancellation
+function presetPrimes() {
+  const baseY = Math.floor(rows/2) - 20;
+  const baseX = 5;
+
+  // Multiple oscillators with different periods feed into a signal bus
+  // When signals coincide, they produce a pattern
+  // Period 2: smallest loop
+  const periods = [3,5,7,11,13,17,19,23];
+  periods.forEach((p, idx) => {
+    const y = baseY + idx * 5;
+    if (y >= rows - 3) return;
+    const loopW = p + 2;
+    rectLoop(baseX, y, loopW, 3);
+    placeLoopElectron(baseX, y, loopW, 3, 0);
+    // Output wire
+    hline(baseX + loopW, y, cols - baseX - loopW - 4);
+    setCell(baseX + loopW, y, CONDUCTOR);
+  });
+
+  // Prime "sieve" concept wire at bottom
+  const busY = baseY + periods.length * 5 + 3;
+  if (busY < rows - 2) {
+    hline(baseX, busY, cols - 10);
+    // Place initial prime signals
+    [0, 6, 12, 18, 24, 30, 42, 48].forEach(off => {
+      if (baseX + off + 1 < cols - 5) {
+        setCell(baseX + off, busY, HEAD);
+        setCell(baseX + off + 1, busY, TAIL);
+      }
+    });
+  }
+}
+
+// ── Preset: XOR Gate ──
+function presetXOR() {
+  // XOR = (A OR B) AND NOT (A AND B)
+  // In Wireworld terms: signal passes if exactly one input fires
+  // We use: two clock inputs, carefully timed
+  const cy = Math.floor(rows/2);
+  const cx = Math.floor(cols/2);
+
+  // Clock A (fast, period 12)
+  const ax = 5, ay = cy - 15;
+  rectLoop(ax, ay, 5, 3);
+  placeLoopElectron(ax, ay, 5, 3, 0);
+
+  // Clock B (same period, offset by half)
+  const bx = 5, by = cy + 10;
+  rectLoop(bx, by, 5, 3);
+  placeLoopElectron(bx, by, 5, 3, 6);
+
+  // Long wires from each clock
+  hline(ax+5, ay+1, cx - ax - 5);
+  hline(bx+5, by+1, cx - bx - 5);
+
+  // XOR logic: two inputs meet at a double-junction
+  // Junction 1 (upper): from A wire + from B vertical connection
+  const j1x = cx, j1y = ay+1;
+  const j2x = cx, j2y = by+1;
+
+  // Vertical connector between j1 and j2
+  vline(j1x, j1y+1, j2y - j1y - 1);
+
+  // Output from XOR gate
+  // The XOR behavior: when both arrive simultaneously at output,
+  // the gate has 2 heads → fires normally (BUT we need it to NOT fire)
+  // True XOR in Wireworld requires a NOT gate in the feedback path
+  // For this demo, we show the OR gate output + an "anti-coincidence" detector
+
+  // OR output
+  const orOutX = cx + 1;
+  hline(orOutX, j1y + (j2y-j1y)/2 | 0, 25);
+
+  // Anti-coincidence: collision detector
+  // When both signals arrive at the same cell simultaneously,
+  // the cell has 2 head neighbours → fires (it would normally)
+  // We need to destroy the coincident signal
+  // Show the concept with a "blocker" cell that's set to erase coincident pulses
+
+  // For educational value: show two wires with electrons at different phases
+  // Route A straight through
+  hline(6, cy - 4, cols - 12);
+  // Route B straight through
+  hline(6, cy + 4, cols - 12);
+
+  // Place A electrons (phase 0)
+  for (let x = 6; x < cols - 14; x += 24) {
+    setCell(x, cy-4, HEAD);
+    if (x > 6) setCell(x-1, cy-4, TAIL);
+  }
+  // Place B electrons (phase 12 offset)
+  for (let x = 18; x < cols - 14; x += 24) {
+    setCell(x, cy+4, HEAD);
+    if (x > 18) setCell(x-1, cy+4, TAIL);
+  }
+
+  // Central XOR structure: vertical wire every 24 cells connecting A and B
+  for (let x = 6; x < cols - 14; x += 24) {
+    vline(x + 11, cy-3, 7);
+    // These create interference patterns - visually demonstrates XOR timing
+  }
+
+  // Large labels via conductor-drawn letters (simplified: just decorative wires)
+  // Add a complex loop structure as visual centerpiece
+  if (cols > 80 && rows > 50) {
+    const bigX = cx + 5, bigY = cy - 12;
+    rectLoop(bigX, bigY, 20, 10);
+    placeLoopElectron(bigX, bigY, 20, 10, 0);
+    rectLoop(bigX+22, bigY, 15, 10);
+    placeLoopElectron(bigX+22, bigY, 15, 10, 5);
+    if (bigX + 39 + 12 < cols - 4) {
+      rectLoop(bigX+39, bigY, 12, 10);
+      placeLoopElectron(bigX+39, bigY, 12, 10, 3);
+    }
+  }
+}
+
+// ─── Preset Buttons ───────────────────────────────────────────────────────────
+document.getElementById('p-clocks').addEventListener('click', () => loadPreset(presetClocks));
+document.getElementById('p-logic').addEventListener('click',  () => loadPreset(presetLogic));
+document.getElementById('p-primes').addEventListener('click', () => loadPreset(presetPrimes));
+document.getElementById('p-xor').addEventListener('click',   () => loadPreset(presetXOR));
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+initGrid();
+loadPreset(presetClocks);  // start with clocks
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

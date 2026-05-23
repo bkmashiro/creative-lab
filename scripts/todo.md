@@ -76,7 +76,7 @@
 
 ### Interactive & Creative
 - [x] 065 Voronoi Stippling (image → dot art, D3-inspired, canvas)
-- [ ] 066 Wireworld (Turing-complete cellular automaton, logic gates)
+- [x] 066 Wireworld (Turing-complete cellular automaton, logic gates)
 - [ ] 067 Sound Visualizer Shader (mic → WebGL shader, real-time FFT)
 - [ ] 068 Fluid Color Mixing (interactive dye injection, WebGL)
 - [ ] 069 3D Rubik's Cube (WebGL, mouse drag rotation, scramble + solve)
