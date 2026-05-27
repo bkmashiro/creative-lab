@@ -89,6 +89,7 @@
 | [065](demos/065-voronoi-stippling.html) | Voronoi Stippling | Canvas 2D, Lloyd's relaxation on weighted Voronoi cells, importance-sampled initial placement, adaptive dot sizing, 4 procedural presets + custom image upload |
 | [066](demos/066-wireworld.html) | Wireworld | Canvas 2D, Turing-complete cellular automaton, electron head/tail/conductor rules, loop oscillators, OR gate, NOT gate, signal splitter, interactive drawing tools |
 | [067](demos/067-sound-visualizer-shader.html) | Sound Visualizer Shader | WebGL, Web Audio API, real-time FFT → 1D texture uniform, three GLSL fragment shader modes (radial spectrum, bar chart, tunnel), mic input + demo synth, bass-reactive glow |
+| [068](demos/068-fluid-color-mixing.html) | Fluid Color Mixing | Navier-Stokes WebGL fluid sim with 9-colour dye palette, complementary-colour collision auto-mode, separable Gaussian bloom, and multi-touch support |
 
 *More coming every 2 days →*
 
