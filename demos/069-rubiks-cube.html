@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#069 3D Rubik's Cube — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#080810;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#dde4f0}
+canvas{display:block;width:100vw;height:100vh;cursor:grab}
+canvas.drag{cursor:grabbing}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(5,6,18,0.78);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;min-width:204px;font-size:0.82rem;user-select:none}
+h1{font-size:0.68rem;letter-spacing:0.13em;text-transform:uppercase;color:#4a5870;margin-bottom:12px}
+.sec{margin-bottom:10px}
+.lbl{color:#4a5870;font-size:0.68rem;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:5px}
+.row{display:flex;gap:5px;flex-wrap:wrap}
+button{background:rgba(110,150,255,0.1);border:1px solid rgba(110,150,255,0.18);color:#8aa0d8;border-radius:6px;padding:5px 10px;font-size:0.76rem;cursor:pointer;transition:background .12s,color .12s;font-family:inherit;line-height:1.2}
+button:hover{background:rgba(110,150,255,0.22);color:#c0d2ff}
+button:active{background:rgba(110,150,255,0.36)}
+button.go{background:rgba(60,200,120,0.1);border-color:rgba(60,200,120,0.22);color:#60d098}
+button.go:hover{background:rgba(60,200,120,0.24)}
+button.warn{background:rgba(255,90,90,0.1);border-color:rgba(255,90,90,0.2);color:#e07878}
+button.warn:hover{background:rgba(255,90,90,0.22)}
+.mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:5px}
+.mgrid button{padding:4px 0;text-align:center;font-size:0.75rem}
+#stat{margin-top:10px;font-size:0.7rem;color:#3a4860;line-height:1.5}
+#hint{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);color:rgba(100,140,210,0.3);font-size:0.7rem;pointer-events:none;white-space:nowrap;text-align:center}
+footer{position:fixed;bottom:12px;right:16px;font-size:0.7rem}
+footer a{color:rgba(255,255,255,0.22);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.55)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <h1>069 · 3D Rubik's Cube</h1>
+  <div class="sec">
+    <div class="row">
+      <button class="go"  id="b-scr">Scramble</button>
+      <button class="go"  id="b-sol">Solve</button>
+      <button class="warn" id="b-rst">Reset</button>
+    </div>
+  </div>
+  <div class="sec">
+    <div class="lbl">Moves</div>
+    <div class="mgrid">
+      <button data-mv="U">U</button><button data-mv="U'">U'</button>
+      <button data-mv="D">D</button><button data-mv="D'">D'</button>
+      <button data-mv="R">R</button><button data-mv="R'">R'</button>
+      <button data-mv="L">L</button><button data-mv="L'">L'</button>
+      <button data-mv="F">F</button><button data-mv="F'">F'</button>
+      <button data-mv="B">B</button><button data-mv="B'">B'</button>
+    </div>
+  </div>
+  <div id="stat">Solved · 0 moves</div>
+</div>
+<div id="hint">Drag to orbit · U D R L F B keys · Shift = inverse</div>
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 069</footer>
+
+<script>
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+const HS    = 0.47;   // cubie half-size  (gap = 1 - 2*0.47 = 0.06)
+const DUR   = 260;    // ms per move animation
+const PI    = Math.PI;
+
+// ── Sticker colors ─────────────────────────────────────────────────────────────
+const C = {
+  R: [0.93,0.14,0.09],  // +X  Red
+  O: [0.97,0.50,0.04],  // -X  Orange
+  W: [0.96,0.96,0.96],  // +Y  White
+  Y: [0.97,0.87,0.00],  // -Y  Yellow
+  G: [0.06,0.75,0.18],  // +Z  Green
+  B: [0.08,0.38,0.96],  // -Z  Blue
+  K: [0.07,0.07,0.09],  //     Interior (black)
+};
+
+// ── 3×3 column-major matrix helpers ───────────────────────────────────────────
+const m3id  = () => { const m=new Float32Array(9); m[0]=m[4]=m[8]=1; return m; };
+const m3mul = (a,b) => {
+  const r=new Float32Array(9);
+  for(let c=0;c<3;c++) for(let i=0;i<3;i++){
+    let s=0; for(let k=0;k<3;k++) s+=a[i+k*3]*b[k+c*3]; r[i+c*3]=s;
+  }
+  return r;
+};
+const m3v = (m,v) => [
+  m[0]*v[0]+m[3]*v[1]+m[6]*v[2],
+  m[1]*v[0]+m[4]*v[1]+m[7]*v[2],
+  m[2]*v[0]+m[5]*v[1]+m[8]*v[2],
+];
+// Rotation around axis 0=X,1=Y,2=Z
+const m3rot = (ax,r) => {
+  const m=m3id(), c=Math.cos(r), s=Math.sin(r);
+  if(ax===0){ m[4]=c;m[5]=s;m[7]=-s;m[8]=c; }
+  else if(ax===1){ m[0]=c;m[2]=-s;m[6]=s;m[8]=c; }
+  else { m[0]=c;m[1]=s;m[3]=-s;m[4]=c; }
+  return m;
+};
+
+// ── 4×4 column-major matrix helpers ───────────────────────────────────────────
+const m4id = () => { const m=new Float32Array(16); m[0]=m[5]=m[10]=m[15]=1; return m; };
+const m4mul = (a,b) => {
+  const r=new Float32Array(16);
+  for(let c=0;c<4;c++) for(let i=0;i<4;i++){
+    let s=0; for(let k=0;k<4;k++) s+=a[i+k*4]*b[k+c*4]; r[i+c*4]=s;
+  }
+  return r;
+};
+const m4persp = (fov,asp,n,f) => {
+  const m=new Float32Array(16),t=1/Math.tan(fov/2);
+  m[0]=t/asp;m[5]=t;m[10]=(f+n)/(n-f);m[11]=-1;m[14]=2*f*n/(n-f);
+  return m;
+};
+const m4rotX = a => { const m=m4id(),c=Math.cos(a),s=Math.sin(a); m[5]=c;m[6]=s;m[9]=-s;m[10]=c; return m; };
+const m4rotY = a => { const m=m4id(),c=Math.cos(a),s=Math.sin(a); m[0]=c;m[2]=-s;m[8]=s;m[10]=c; return m; };
+const m4tr   = (x,y,z) => { const m=m4id(); m[12]=x;m[13]=y;m[14]=z; return m; };
+const ease   = t => t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+
+// ── Cube face geometry (local unit half-size) ──────────────────────────────────
+// Each face: 6 vertices (2 CCW triangles) + outward normal
+const FDEFS = [
+  {n:[1,0,0],  v:[[1,-1,-1],[1,-1,1],[1,1,1], [1,-1,-1],[1,1,1],[1,1,-1]]},  // +X
+  {n:[-1,0,0], v:[[-1,-1,1],[-1,-1,-1],[-1,1,-1],[-1,-1,1],[-1,1,-1],[-1,1,1]]}, // -X
+  {n:[0,1,0],  v:[[-1,1,1],[1,1,1],[1,1,-1],  [-1,1,1],[1,1,-1],[-1,1,-1]]}, // +Y
+  {n:[0,-1,0], v:[[-1,-1,-1],[1,-1,-1],[1,-1,1],[-1,-1,-1],[1,-1,1],[-1,-1,1]]},// -Y
+  {n:[0,0,1],  v:[[-1,-1,1],[1,-1,1],[1,1,1],  [-1,-1,1],[1,1,1],[-1,1,1]]}, // +Z
+  {n:[0,0,-1], v:[[1,-1,-1],[-1,-1,-1],[-1,1,-1],[1,-1,-1],[-1,1,-1],[1,1,-1]]},// -Z
+];
+
+// ── Cube state ─────────────────────────────────────────────────────────────────
+let cubies = [];
+
+function faceColor(initPos, faceNorm) {
+  const [ix,iy,iz] = initPos, [fx,fy,fz] = faceNorm;
+  if(fx> .5 && ix=== 1) return C.R;
+  if(fx<-.5 && ix===-1) return C.O;
+  if(fy> .5 && iy=== 1) return C.W;
+  if(fy<-.5 && iy===-1) return C.Y;
+  if(fz> .5 && iz=== 1) return C.G;
+  if(fz<-.5 && iz===-1) return C.B;
+  return C.K;
+}
+
+function initCube() {
+  cubies = [];
+  for(let x=-1;x<=1;x++) for(let y=-1;y<=1;y++) for(let z=-1;z<=1;z++) {
+    const ip = [x,y,z];
+    cubies.push({ pos:[x,y,z], rot:m3id(), cols:FDEFS.map(f=>faceColor(ip,f.n)) });
+  }
+}
+
+// ── Move definitions ───────────────────────────────────────────────────────────
+const MOVES = {
+  'U':  {ax:1,ly: 1,ang: 90}, "U'":{ax:1,ly: 1,ang:-90},
+  'D':  {ax:1,ly:-1,ang:-90}, "D'":{ax:1,ly:-1,ang: 90},
+  'R':  {ax:0,ly: 1,ang: 90}, "R'":{ax:0,ly: 1,ang:-90},
+  'L':  {ax:0,ly:-1,ang:-90}, "L'":{ax:0,ly:-1,ang: 90},
+  'F':  {ax:2,ly: 1,ang: 90}, "F'":{ax:2,ly: 1,ang:-90},
+  'B':  {ax:2,ly:-1,ang:-90}, "B'":{ax:2,ly:-1,ang: 90},
+};
+
+// ── Move queue / animation ─────────────────────────────────────────────────────
+let queue   = [];
+let history = [];
+let anim    = null;   // {move, t}
+let solving = false;
+let onDone  = null;
+let nMoves  = 0;
+
+function enqMove(mv) { queue.push(mv); }
+
+function applyMove(name) {
+  if(solving) return;
+  const mv = MOVES[name]; if(!mv) return;
+  history.push(name);
+  nMoves++;
+  enqMove(mv);
+  updateStat();
+}
+
+function scramble() {
+  if(solving) return;
+  queue=[]; anim=null; history=[]; nMoves=0;
+  const keys=Object.keys(MOVES);
+  for(let i=0;i<20;i++){
+    const k=keys[Math.floor(Math.random()*keys.length)];
+    history.push(k);
+    queue.push(MOVES[k]);
+  }
+  updateStat();
+}
+
+function solve() {
+  if(solving||!history.length) return;
+  solving=true;
+  const inv=history.slice().reverse().map(k=>{
+    const d=MOVES[k]; return {ax:d.ax,ly:d.ly,ang:-d.ang};
+  });
+  inv.forEach(m=>queue.push(m));
+  history=[]; nMoves=0;
+  onDone=()=>{ solving=false; updateStat(); };
+  updateStat();
+}
+
+function reset() {
+  queue=[]; anim=null; history=[]; solving=false; onDone=null; nMoves=0;
+  initCube();
+  updateStat();
+}
+
+function finalizeMove(mv) {
+  const R=m3rot(mv.ax, mv.ang*PI/180);
+  for(const cb of cubies) {
+    if(Math.round(cb.pos[mv.ax])===mv.ly) {
+      cb.pos = m3v(R,cb.pos).map(Math.round);
+      cb.rot = m3mul(R,cb.rot);
+    }
+  }
+}
+
+function startNext() {
+  if(anim||!queue.length) return;
+  anim={move:queue.shift(), t:0};
+}
+
+function updateStat() {
+  const s = solving ? 'Solving…' : history.length ? 'Scrambled' : 'Solved';
+  document.getElementById('stat').textContent = s+' · '+nMoves+' moves';
+}
+
+// ── WebGL setup ────────────────────────────────────────────────────────────────
+const canvas=document.getElementById('c');
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+
+const gl=canvas.getContext('webgl',{antialias:true});
+if(!gl){document.body.innerHTML='<p style="color:#f88;padding:2em">WebGL not supported</p>';throw 0;}
+
+const VS=`
+precision mediump float;
+attribute vec3 aP,aN,aC;
+uniform mat4 uMVP;
+uniform mat3 uNM;
+varying vec3 vC,vN;
+void main(){gl_Position=uMVP*vec4(aP,1.);vC=aC;vN=uNM*aN;}`;
+
+const FS=`
+precision mediump float;
+varying vec3 vC,vN;
+void main(){
+  vec3 n=normalize(vN);
+  vec3 L1=normalize(vec3(.5,1.2,2.));
+  vec3 L2=normalize(vec3(-1.,-0.4,.8));
+  float d=max(dot(n,L1),0.)*.65+max(dot(n,L2),0.)*.2;
+  float lum=.3+d;
+  vec3 H=normalize(L1+vec3(0.,0.,1.));
+  float spec=pow(max(dot(n,H),0.),56.)*.22*step(.18,dot(vC,vec3(.333)));
+  gl_FragColor=vec4(vC*lum+spec,1.);
+}`;
+
+function mkShader(src,type){
+  const s=gl.createShader(type);
+  gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+const prog=gl.createProgram();
+gl.attachShader(prog,mkShader(VS,gl.VERTEX_SHADER));
+gl.attachShader(prog,mkShader(FS,gl.FRAGMENT_SHADER));
+gl.linkProgram(prog); gl.useProgram(prog);
+
+const aP=gl.getAttribLocation(prog,'aP'),
+      aN=gl.getAttribLocation(prog,'aN'),
+      aC=gl.getAttribLocation(prog,'aC'),
+      uMVP=gl.getUniformLocation(prog,'uMVP'),
+      uNM =gl.getUniformLocation(prog,'uNM');
+
+const vbo=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,vbo);
+const ST=9*4;
+gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,ST,0);
+gl.enableVertexAttribArray(aN); gl.vertexAttribPointer(aN,3,gl.FLOAT,false,ST,12);
+gl.enableVertexAttribArray(aC); gl.vertexAttribPointer(aC,3,gl.FLOAT,false,ST,24);
+
+// ── Orbit controls ─────────────────────────────────────────────────────────────
+let oX=0.44, oY=-0.52;   // initial angles
+let dragging=false,lx=0,ly=0,vx=0,vy=0;
+
+canvas.addEventListener('mousedown',e=>{if(e.button!==0)return;dragging=true;lx=e.clientX;ly=e.clientY;vx=vy=0;canvas.classList.add('drag');});
+canvas.addEventListener('mousemove',e=>{if(!dragging)return;const dx=e.clientX-lx,dy=e.clientY-ly;oY+=dx*.007;oX+=dy*.007;vx=dy*.007;vy=dx*.007;lx=e.clientX;ly=e.clientY;});
+canvas.addEventListener('mouseup',()=>{dragging=false;canvas.classList.remove('drag');});
+canvas.addEventListener('mouseleave',()=>{dragging=false;canvas.classList.remove('drag');});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];dragging=true;lx=t.clientX;ly=t.clientY;vx=vy=0;},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();if(!dragging)return;const t=e.touches[0];const dx=t.clientX-lx,dy=t.clientY-ly;oY+=dx*.007;oX+=dy*.007;vx=dy*.007;vy=dx*.007;lx=t.clientX;ly=t.clientY;},{passive:false});
+canvas.addEventListener('touchend',()=>{dragging=false;});
+
+// ── Keyboard ───────────────────────────────────────────────────────────────────
+const KEY_MAP={U:'U',D:'D',R:'R',L:'L',F:'F',B:'B'};
+window.addEventListener('keydown',e=>{
+  const k=KEY_MAP[e.key.toUpperCase()];
+  if(!k) return;
+  e.preventDefault();
+  applyMove(e.shiftKey?k+"'":k);
+});
+
+// ── UI buttons ─────────────────────────────────────────────────────────────────
+document.getElementById('b-scr').addEventListener('click',scramble);
+document.getElementById('b-sol').addEventListener('click',solve);
+document.getElementById('b-rst').addEventListener('click',reset);
+document.querySelectorAll('[data-mv]').forEach(b=>b.addEventListener('click',()=>applyMove(b.dataset.mv)));
+
+// ── Vertex buffer build ────────────────────────────────────────────────────────
+// Pre-allocate: 27 cubies × 6 faces × 6 verts × 9 floats
+const VBUF = new Float32Array(27*6*6*9);
+
+function buildVerts() {
+  let ptr=0;
+  const S=HS;
+  for(const cb of cubies) {
+    let pos=cb.pos, rot=cb.rot;
+    if(anim) {
+      const mv=anim.move;
+      if(Math.round(cb.pos[mv.ax])===mv.ly) {
+        const ang=mv.ang*PI/180*ease(Math.min(anim.t/DUR,1));
+        const R=m3rot(mv.ax,ang);
+        pos=m3v(R,cb.pos);
+        rot=m3mul(R,cb.rot);
+      }
+    }
+    for(let fi=0;fi<6;fi++){
+      const fd=FDEFS[fi], col=cb.cols[fi];
+      const wn=m3v(rot,fd.n);
+      for(const lv of fd.v){
+        const rv=m3v(rot,[lv[0]*S,lv[1]*S,lv[2]*S]);
+        VBUF[ptr++]=rv[0]+pos[0]; VBUF[ptr++]=rv[1]+pos[1]; VBUF[ptr++]=rv[2]+pos[2];
+        VBUF[ptr++]=wn[0]; VBUF[ptr++]=wn[1]; VBUF[ptr++]=wn[2];
+        VBUF[ptr++]=col[0]; VBUF[ptr++]=col[1]; VBUF[ptr++]=col[2];
+      }
+    }
+  }
+  return ptr/9; // vertex count
+}
+
+// ── Render loop ────────────────────────────────────────────────────────────────
+let last=0;
+
+function frame(ts) {
+  const dt=ts-last; last=ts;
+
+  // Orbit inertia
+  if(!dragging){ oX+=vx; oY+=vy; vx*=.90; vy*=.90; }
+
+  // Animation tick
+  if(anim) {
+    anim.t+=dt;
+    if(anim.t>=DUR) { finalizeMove(anim.move); anim=null; }
+  }
+  startNext();
+
+  // Fire onDone if queue emptied
+  if(!anim&&!queue.length&&onDone){ const cb=onDone; onDone=null; cb(); }
+
+  // Resize
+  const W=canvas.clientWidth|0, H=canvas.clientHeight|0;
+  if(canvas.width!==W||canvas.height!==H){ canvas.width=W; canvas.height=H; gl.viewport(0,0,W,H); }
+
+  // MVP
+  const orbit=m4mul(m4rotY(oY),m4rotX(oX));
+  const mvp=m4mul(m4persp(56*PI/180,W/H,.1,100), m4mul(m4tr(0,0,-6),orbit));
+  const nm=new Float32Array([orbit[0],orbit[1],orbit[2],orbit[4],orbit[5],orbit[6],orbit[8],orbit[9],orbit[10]]);
+
+  // Build and upload vertices
+  const vcount=buildVerts();
+  gl.bindBuffer(gl.ARRAY_BUFFER,vbo);
+  gl.bufferData(gl.ARRAY_BUFFER,VBUF.subarray(0,vcount*9),gl.DYNAMIC_DRAW);
+
+  // Draw
+  gl.clearColor(.031,.031,.063,1);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+  gl.disable(gl.CULL_FACE);
+
+  gl.uniformMatrix4fv(uMVP,false,mvp);
+  gl.uniformMatrix3fv(uNM,false,nm);
+  gl.drawArrays(gl.TRIANGLES,0,vcount);
+
+  requestAnimationFrame(frame);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+initCube();
+requestAnimationFrame(ts=>{ last=ts; requestAnimationFrame(frame); });
+</script>
+</body>
+</html>

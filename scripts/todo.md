@@ -79,7 +79,7 @@
 - [x] 066 Wireworld (Turing-complete cellular automaton, logic gates)
 - [x] 067 Sound Visualizer Shader (mic → WebGL shader, real-time FFT)
 - [x] 068 Fluid Color Mixing (interactive dye injection, WebGL)
-- [ ] 069 3D Rubik's Cube (WebGL, mouse drag rotation, scramble + solve)
+- [x] 069 3D Rubik's Cube (WebGL, mouse drag rotation, scramble + solve)
 - [ ] 070 Sand + Water (multi-material falling sand, pixel sim)
 - [ ] 071 Bloom Shader (HDR bloom post-processing, WebGL)
 - [ ] 072 Pixel Sorting (glitch art, threshold + angle control)
