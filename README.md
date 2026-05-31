@@ -91,6 +91,7 @@
 | [067](demos/067-sound-visualizer-shader.html) | Sound Visualizer Shader | WebGL, Web Audio API, real-time FFT → 1D texture uniform, three GLSL fragment shader modes (radial spectrum, bar chart, tunnel), mic input + demo synth, bass-reactive glow |
 | [068](demos/068-fluid-color-mixing.html) | Fluid Color Mixing | Navier-Stokes WebGL fluid sim with 9-colour dye palette, complementary-colour collision auto-mode, separable Gaussian bloom, and multi-touch support |
 | [069](demos/069-rubiks-cube.html) | 3D Rubik's Cube | WebGL, 27 cubies with per-face sticker colors, mouse-drag orbit, eased layer-rotation animations, scramble + reverse-solve, keyboard move shortcuts |
+| [070](demos/070-sand-water.html) | Sand + Water | Canvas 2D pixel sim — sand, water, oil, fire, acid, steam + wood; density-based fluid separation, fire ignition chain, acid dissolution, randomised column updates |
 
 *More coming every 2 days →*
 
