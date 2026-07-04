@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#049 Flow Field — creative-lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#050810;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#dde6f0}
+canvas{display:block;width:100vw;height:100vh;position:fixed;top:0;left:0}
+#ui{position:fixed;top:16px;left:16px;z-index:10;background:rgba(5,8,16,0.85);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(120,200,255,0.13);border-radius:12px;padding:14px 16px;min-width:245px;font-size:0.82rem}
+h1{font-size:0.7rem;letter-spacing:0.13em;text-transform:uppercase;color:#3a6a8a;margin-bottom:11px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.row label{width:96px;color:#90b0c8;flex-shrink:0;font-size:0.78rem}
+.row input[type=range]{flex:1;accent-color:#5ec8ff;cursor:pointer}
+.val{width:44px;text-align:right;color:#5ec8ff;font-size:0.74rem;font-variant-numeric:tabular-nums}
+.check-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer}
+.check-row label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.check-row input{accent-color:#5ec8ff;cursor:pointer;width:13px;height:13px}
+.check-row span{color:#90b0c8;font-size:0.78rem}
+.section{font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;color:#2e5570;margin:9px 0 4px;border-top:1px solid rgba(120,200,255,0.07);padding-top:7px}
+.btn-row{display:flex;gap:5px;margin-top:9px}
+button{flex:1;background:rgba(94,200,255,0.07);border:1px solid rgba(94,200,255,0.18);color:#5ec8ff;border-radius:6px;padding:5px 4px;font-size:0.74rem;cursor:pointer;transition:background .15s}
+button:hover{background:rgba(94,200,255,0.18)}
+button.active{background:rgba(94,200,255,0.22);border-color:rgba(94,200,255,0.38)}
+#stats{position:fixed;top:16px;right:16px;z-index:10;background:rgba(5,8,16,0.78);backdrop-filter:blur(10px);border:1px solid rgba(120,200,255,0.09);border-radius:10px;padding:10px 14px;font-size:0.74rem;color:#5a7a8a;text-align:right;line-height:1.8}
+#stats span{color:#8ec0d8;font-variant-numeric:tabular-nums}
+#hint{position:fixed;bottom:36px;left:50%;transform:translateX(-50%);color:rgba(140,200,255,0.2);font-size:0.7rem;pointer-events:none;white-space:nowrap}
+footer{position:fixed;bottom:12px;right:16px;color:rgba(255,255,255,0.18);font-size:0.7rem}
+footer a{color:rgba(255,255,255,0.26);text-decoration:none}
+footer a:hover{color:rgba(255,255,255,0.52)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <h1>049 · Flow Field</h1>
+
+  <div class="section">Field</div>
+  <div class="row"><label>Noise scale</label><input type="range" id="s-scale" min="1" max="80" value="22"><span class="val" id="v-scale">22</span></div>
+  <div class="row"><label>Curl strength</label><input type="range" id="s-curl" min="0" max="100" value="60"><span class="val" id="v-curl">0.60</span></div>
+  <div class="row"><label>Time speed</label><input type="range" id="s-speed" min="0" max="100" value="18"><span class="val" id="v-speed">0.18</span></div>
+  <div class="row"><label>Field layers</label><input type="range" id="s-oct" min="1" max="6" value="3"><span class="val" id="v-oct">3</span></div>
+
+  <div class="section">Particles</div>
+  <div class="row"><label>Count</label><input type="range" id="s-count" min="500" max="30000" value="8000"><span class="val" id="v-count">8000</span></div>
+  <div class="row"><label>Speed</label><input type="range" id="s-pspeed" min="1" max="100" value="36"><span class="val" id="v-pspeed">2.0</span></div>
+  <div class="row"><label>Trail length</label><input type="range" id="s-trail" min="1" max="60" value="18"><span class="val" id="v-trail">18</span></div>
+  <div class="row"><label>Trail fade</label><input type="range" id="s-fade" min="1" max="30" value="8"><span class="val" id="v-fade">0.08</span></div>
+
+  <div class="section">Color</div>
+  <div class="row"><label>Hue shift</label><input type="range" id="s-hue" min="0" max="360" value="200"><span class="val" id="v-hue">200</span></div>
+  <div class="row"><label>Hue range</label><input type="range" id="s-hrange" min="0" max="360" value="120"><span class="val" id="v-hrange">120</span></div>
+
+  <div class="check-row"><label><input type="checkbox" id="cb-field"> <span>Show field arrows</span></label></div>
+  <div class="check-row"><label><input type="checkbox" id="cb-mouse" checked> <span>Mouse attractor</span></label></div>
+  <div class="check-row"><label><input type="checkbox" id="cb-curl" checked> <span>Pure curl (∇×F)</span></label></div>
+
+  <div class="btn-row">
+    <button id="btn-reset">Reset</button>
+    <button id="btn-pause">Pause</button>
+    <button id="btn-clear">Clear</button>
+  </div>
+</div>
+
+<div id="stats">
+  Particles <span id="st-count">-</span><br>
+  FPS <span id="st-fps">-</span><br>
+  Time <span id="st-time">-</span>
+</div>
+
+<div id="hint">Click/drag to attract · Mouse wheel = attractor radius</div>
+
+<footer><a href="https://github.com/bkmashiro/creative-lab">creative-lab</a> · demo 049</footer>
+
+<script>
+// ─── Simplex Noise (self-contained) ────────────────────────────────────────
+class SimplexNoise {
+  constructor(seed=42){
+    this.p=new Uint8Array(256);
+    for(let i=0;i<256;i++)this.p[i]=i;
+    let s=seed|0;
+    for(let i=255;i>0;i--){s=(s^(s<<13))^(s>>7)^(s<<17);const j=((s>>>0)%(i+1));[this.p[i],this.p[j]]=[this.p[j],this.p[i]];}
+    this.perm=new Uint8Array(512);
+    this.permMod12=new Uint8Array(512);
+    for(let i=0;i<512;i++){this.perm[i]=this.p[i&255];this.permMod12[i]=this.perm[i]%12;}
+    this.grad3=[
+      [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+      [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+      [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
+    ];
+  }
+  dot2(g,x,y){return g[0]*x+g[1]*y;}
+  noise2D(xin,yin){
+    const {perm,permMod12,grad3}=this;
+    const F2=0.5*(Math.sqrt(3)-1);
+    const G2=(3-Math.sqrt(3))/6;
+    const s=(xin+yin)*F2;
+    const i=Math.floor(xin+s),j=Math.floor(yin+s);
+    const t=(i+j)*G2;
+    const X0=i-t,Y0=j-t;
+    const x0=xin-X0,y0=yin-Y0;
+    let i1,j1;
+    if(x0>y0){i1=1;j1=0;}else{i1=0;j1=1;}
+    const x1=x0-i1+G2,y1=y0-j1+G2;
+    const x2=x0-1+2*G2,y2=y0-1+2*G2;
+    const ii=i&255,jj=j&255;
+    let t0=0.5-x0*x0-y0*y0;
+    let n0=0;if(t0>=0){t0*=t0;n0=t0*t0*this.dot2(grad3[permMod12[ii+perm[jj]]],x0,y0);}
+    let t1=0.5-x1*x1-y1*y1;
+    let n1=0;if(t1>=0){t1*=t1;n1=t1*t1*this.dot2(grad3[permMod12[ii+i1+perm[jj+j1]]],x1,y1);}
+    let t2=0.5-x2*x2-y2*y2;
+    let n2=0;if(t2>=0){t2*=t2;n2=t2*t2*this.dot2(grad3[permMod12[ii+1+perm[jj+1]]],x2,y2);}
+    return 70*(n0+n1+n2);
+  }
+}
+
+// ─── Setup ─────────────────────────────────────────────────────────────────
+const canvas=document.getElementById('c');
+const gl=canvas.getContext('webgl',{antialias:false,alpha:false,preserveDrawingBuffer:false});
+// Fallback: if WebGL not available use canvas2d
+const USE_WEBGL=!!gl;
+
+let W,H;
+function resize(){
+  W=canvas.width=window.innerWidth;
+  H=canvas.height=window.innerHeight;
+  if(USE_WEBGL)gl.viewport(0,0,W,H);
+}
+window.addEventListener('resize',()=>{resize();resetParticles();});
+resize();
+
+// ─── Parameters ────────────────────────────────────────────────────────────
+const P={
+  scale:22, curl:0.6, speed:0.18, octaves:3,
+  count:8000, pspeed:2.0, trailLen:18, fade:0.08,
+  hue:200, hrange:120,
+  showField:false, mouseAttract:true, pureCurl:true,
+};
+
+// ─── UI wiring ─────────────────────────────────────────────────────────────
+function wire(id,param,div,fmt){
+  const sl=document.getElementById(id);
+  const vl=document.getElementById(div);
+  sl.addEventListener('input',()=>{
+    P[param]=fmt(+sl.value);
+    vl.textContent=P[param];
+    if(param==='count')resetParticles();
+  });
+}
+wire('s-scale','scale','v-scale',v=>v);
+wire('s-curl','curl','v-curl',v=>(v/100).toFixed(2));
+wire('s-speed','speed','v-speed',v=>(v/100).toFixed(2));
+wire('s-oct','octaves','v-oct',v=>v|0);
+wire('s-count','count','v-count',v=>v|0);
+wire('s-pspeed','pspeed','v-pspeed',v=>(v/18).toFixed(1));
+wire('s-trail','trailLen','v-trail',v=>v|0);
+wire('s-fade','fade','v-fade',v=>(v/100).toFixed(2));
+wire('s-hue','hue','v-hue',v=>v|0);
+wire('s-hrange','hrange','v-hrange',v=>v|0);
+
+document.getElementById('cb-field').addEventListener('change',e=>P.showField=e.target.checked);
+document.getElementById('cb-mouse').addEventListener('change',e=>P.mouseAttract=e.target.checked);
+document.getElementById('cb-curl').addEventListener('change',e=>P.pureCurl=e.target.checked);
+
+// Update display values on load
+['scale','curl','speed','oct','count','pspeed','trail','fade','hue','hrange'].forEach(k=>{
+  const sl=document.getElementById('s-'+k);
+  const vl=document.getElementById('v-'+k);
+  if(sl&&vl)vl.textContent=sl.value;
+});
+document.getElementById('v-curl').textContent='0.60';
+document.getElementById('v-speed').textContent='0.18';
+document.getElementById('v-pspeed').textContent='2.0';
+document.getElementById('v-fade').textContent='0.08';
+
+let paused=false;
+document.getElementById('btn-pause').addEventListener('click',function(){
+  paused=!paused;this.classList.toggle('active',paused);
+  this.textContent=paused?'Resume':'Pause';
+});
+document.getElementById('btn-reset').addEventListener('click',resetParticles);
+document.getElementById('btn-clear').addEventListener('click',clearTrails);
+
+// ─── Mouse ─────────────────────────────────────────────────────────────────
+const mouse={x:-9999,y:-9999,down:false,radius:120};
+canvas.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;});
+canvas.addEventListener('mousedown',e=>{mouse.down=true;mouse.x=e.clientX;mouse.y=e.clientY;});
+canvas.addEventListener('mouseup',()=>mouse.down=false);
+canvas.addEventListener('mouseleave',()=>{mouse.x=-9999;mouse.y=-9999;mouse.down=false;});
+canvas.addEventListener('wheel',e=>{
+  mouse.radius=Math.max(20,Math.min(400,mouse.radius-e.deltaY*0.3));
+  e.preventDefault();
+},{passive:false});
+// Touch support
+canvas.addEventListener('touchmove',e=>{
+  const t=e.touches[0];mouse.x=t.clientX;mouse.y=t.clientY;e.preventDefault();
+},{passive:false});
+canvas.addEventListener('touchstart',e=>{
+  const t=e.touches[0];mouse.x=t.clientX;mouse.y=t.clientY;mouse.down=true;
+},{passive:true});
+canvas.addEventListener('touchend',()=>mouse.down=false);
+
+// ─── Noise / field ─────────────────────────────────────────────────────────
+const snoise=new SimplexNoise(12345);
+
+function fbm(x,y,t,octaves){
+  let v=0,amp=1,freq=1,tot=0;
+  for(let o=0;o<octaves;o++){
+    v+=snoise.noise2D(x*freq+t,y*freq+t*0.7)*amp;
+    tot+=amp;amp*=0.5;freq*=2.1;
+  }
+  return v/tot;
+}
+
+const EPS=0.5;
+function curlNoise(x,y,t){
+  // curl of a scalar potential field → divergence-free vector field
+  const nx=x/P.scale, ny=y/P.scale;
+  const dFdx=(fbm(nx+EPS,ny,t,P.octaves)-fbm(nx-EPS,ny,t,P.octaves))/(2*EPS);
+  const dFdy=(fbm(nx,ny+EPS,t,P.octaves)-fbm(nx,ny-EPS,t,P.octaves))/(2*EPS);
+  // curl2D = (∂F/∂y, -∂F/∂x) — gives flow perpendicular to gradient
+  return { vx: dFdy * P.curl * P.scale,
+           vy: -dFdx * P.curl * P.scale };
+}
+
+function fieldAngle(x,y,t){
+  if(P.pureCurl){
+    const c=curlNoise(x,y,t);
+    return Math.atan2(c.vy,c.vx);
+  } else {
+    return fbm(x/P.scale,y/P.scale,t,P.octaves)*Math.PI*4;
+  }
+}
+
+// ─── Canvas 2D rendering ───────────────────────────────────────────────────
+const ctx2=canvas.getContext('2d');
+
+// Particles: Float32Arrays for perf
+let px,py,plife,page;
+let trailX,trailY;  // [count * trailLen]
+
+function resetParticles(){
+  const n=P.count|0;
+  px=new Float32Array(n);
+  py=new Float32Array(n);
+  plife=new Float32Array(n);
+  page=new Float32Array(n);
+  trailX=new Float32Array(n*P.trailLen);
+  trailY=new Float32Array(n*P.trailLen);
+  for(let i=0;i<n;i++) spawnParticle(i,true);
+  clearTrails();
+}
+
+function spawnParticle(i,init){
+  px[i]=Math.random()*W;
+  py[i]=Math.random()*H;
+  plife[i]=0;
+  page[i]=init?Math.random()*P.trailLen:0;
+  const base=i*P.trailLen;
+  for(let j=0;j<P.trailLen;j++){trailX[base+j]=px[i];trailY[base+j]=py[i];}
+}
+
+function clearTrails(){
+  if(!px)return;
+  const n=P.count|0;
+  for(let i=0;i<n;i++){
+    const base=i*P.trailLen;
+    for(let j=0;j<P.trailLen;j++){trailX[base+j]=px[i];trailY[base+j]=py[i];}
+  }
+}
+
+resetParticles();
+
+// ─── Animation ─────────────────────────────────────────────────────────────
+let time=0;
+let lastTime=performance.now();
+let frameCount=0,fpsAccum=0,fps=60;
+
+function hsl(h,s,l,a=1){
+  return `hsla(${h|0},${s|0}%,${l|0}%,${a.toFixed(3)})`;
+}
+
+function update(dt){
+  time+=P.speed*dt;
+  const n=P.count|0;
+  const tl=P.trailLen|0;
+  const spd=P.pspeed*(P.scale/22)*dt*60;
+
+  for(let i=0;i<n;i++){
+    const base=i*tl;
+    // Shift trail history
+    for(let j=tl-1;j>0;j--){
+      trailX[base+j]=trailX[base+j-1];
+      trailY[base+j]=trailY[base+j-1];
+    }
+    trailX[base]=px[i];
+    trailY[base]=py[i];
+
+    // Compute flow
+    let vx,vy;
+    if(P.pureCurl){
+      const c=curlNoise(px[i],py[i],time);
+      vx=c.vx;vy=c.vy;
+    } else {
+      const a=fieldAngle(px[i],py[i],time);
+      vx=Math.cos(a);vy=Math.sin(a);
+    }
+
+    // Mouse attractor / repulsor
+    if(P.mouseAttract&&mouse.x>-999){
+      const dx=mouse.x-px[i], dy=mouse.y-py[i];
+      const d2=dx*dx+dy*dy;
+      const r2=mouse.radius*mouse.radius;
+      if(d2<r2&&d2>1){
+        const d=Math.sqrt(d2);
+        const strength=mouse.down?5:1.5;
+        const f=strength*(1-d/mouse.radius)/d;
+        vx+=dx*f; vy+=dy*f;
+      }
+    }
+
+    px[i]+=vx*spd;
+    py[i]+=vy*spd;
+    page[i]++;
+
+    // Respawn when out of bounds or lived long enough
+    if(px[i]<0||px[i]>W||py[i]<0||py[i]>H||page[i]>P.trailLen*60){
+      spawnParticle(i,false);
+    }
+  }
+}
+
+function draw(){
+  const n=P.count|0;
+  const tl=P.trailLen|0;
+
+  // Fade existing content
+  ctx2.fillStyle=`rgba(5,8,16,${P.fade})`;
+  ctx2.fillRect(0,0,W,H);
+
+  // Draw trails
+  for(let i=0;i<n;i++){
+    const base=i*tl;
+    if(page[i]<1)continue;
+
+    // Color by velocity direction at particle head
+    let angle;
+    if(P.pureCurl){
+      const c=curlNoise(px[i],py[i],time);
+      angle=Math.atan2(c.vy,c.vx);
+    } else {
+      angle=fieldAngle(px[i],py[i],time);
+    }
+    const hue=(P.hue+((angle/(Math.PI*2)+0.5)*P.hrange))%360;
+
+    const segments=Math.min(tl-1,(page[i]|0));
+    ctx2.beginPath();
+    ctx2.moveTo(trailX[base],trailY[base]);
+    for(let j=1;j<=segments;j++){
+      ctx2.lineTo(trailX[base+j],trailY[base+j]);
+    }
+    const alpha=Math.min(1,page[i]/8)*0.7;
+    ctx2.strokeStyle=hsl(hue,85,62,alpha);
+    ctx2.lineWidth=1;
+    ctx2.stroke();
+  }
+
+  // Draw field arrows (optional)
+  if(P.showField){
+    const step=Math.max(30,Math.min(80,W/14));
+    ctx2.save();
+    for(let x=step/2;x<W;x+=step){
+      for(let y=step/2;y<H;y+=step){
+        const a=fieldAngle(x,y,time);
+        const len=step*0.38;
+        const ex=x+Math.cos(a)*len, ey=y+Math.sin(a)*len;
+        const hue=(P.hue+((a/(Math.PI*2)+0.5)*P.hrange))%360;
+        ctx2.strokeStyle=hsl(hue,70,55,0.5);
+        ctx2.lineWidth=1;
+        ctx2.beginPath();ctx2.moveTo(x,y);ctx2.lineTo(ex,ey);ctx2.stroke();
+        // arrowhead
+        ctx2.fillStyle=hsl(hue,70,65,0.5);
+        ctx2.beginPath();
+        ctx2.arc(ex,ey,2,0,Math.PI*2);ctx2.fill();
+      }
+    }
+    ctx2.restore();
+  }
+
+  // Mouse attractor ring
+  if(P.mouseAttract&&mouse.x>-999){
+    ctx2.save();
+    ctx2.strokeStyle=mouse.down?'rgba(100,200,255,0.5)':'rgba(100,200,255,0.2)';
+    ctx2.lineWidth=1;
+    ctx2.setLineDash([4,6]);
+    ctx2.beginPath();
+    ctx2.arc(mouse.x,mouse.y,mouse.radius,0,Math.PI*2);
+    ctx2.stroke();
+    ctx2.setLineDash([]);
+    ctx2.restore();
+  }
+}
+
+// ─── Stats ─────────────────────────────────────────────────────────────────
+function updateStats(dt){
+  fpsAccum+=dt;frameCount++;
+  if(fpsAccum>=0.5){fps=frameCount/fpsAccum;fpsAccum=0;frameCount=0;}
+  document.getElementById('st-count').textContent=(P.count|0).toLocaleString();
+  document.getElementById('st-fps').textContent=fps.toFixed(1);
+  document.getElementById('st-time').textContent=time.toFixed(2);
+}
+
+// ─── Main loop ─────────────────────────────────────────────────────────────
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min((now-lastTime)/1000,0.05);
+  lastTime=now;
+  if(!paused){
+    update(dt);
+    draw();
+    updateStats(dt);
+  }
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
